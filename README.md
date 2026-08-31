@@ -5,10 +5,6 @@
 **所有指令都是裸词触发，`` 前缀可省略**（群里直接发 `词缀`、`BIS 火法`、`角色 阿尔萨斯 白银之手` 即可；带 `` 也一样能用）。
 发 `魔兽帮助` 可列出全部指令。
 
-> 开机 / 关机 / 电脑状态 已拆分为独立插件 **astrbot_plugin_songguo_power（松果电子开关机）**，不在本插件内。
-
-作者：lianzy
-
 ## 功能与指令
 
 | 原插件 | 指令 | 说明 |
@@ -73,12 +69,6 @@
    为避免把正常聊天当指令，带中文参数的指令要求分隔符（`角色 阿尔萨斯 白银之手` 有效，`角色扮演游戏真好玩` 不触发）；`<版本>事件`、`<专精>天赋` 只在认得出版本名/职业名时才响应。
 2. **管理权限**：`名单 添加/删除`、`榜单 刷新`、`重置提醒 开/关/测试`、`魔兽新闻推送 开/关/测试` 需要管理员。AstrBot 的管理员 = WebUI 配置里的 `admins_id`（不是 QQ 群管理），用 `/sid` 拿到自己的 ID 后加进去。
 3. **升级**：改版后请**先删除服务器上的整个 `astrbot_plugin_wow` 目录再解压新包**，不要增量覆盖（新旧文件混装会导致运行时 `has no attribute` 崩溃）。
-
-## 灵感来源
-
-本插件移植自 [ZeroBot-Plugin](https://github.com/FloatTech/ZeroBot-Plugin) 的以下插件目录：
-`plugin/{wcl, wowinfo, wowguild, wowboard, bis, specrank, charinfo, mpaffix, blizzardnews, wowcal, wowgacha, wowquote, wowreset, dixiabao, ngajiexi, chishenme}` 以及 `internal/wclclient`。原项目采用 MIT 许可证。
-`chishenme` 的开机/关机/电脑状态已拆到 `astrbot_plugin_songguo_power`。
 
 ## License
 
