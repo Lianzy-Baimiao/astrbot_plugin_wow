@@ -147,9 +147,13 @@ def is_talent_key(key: str) -> bool:
 
 
 async def talent_info(key: str) -> str:
+    """返回 Markdown：天赋串用行内代码包住（长串好复制，且 base64 字符不会被 MD 吃掉），
+    每段挂 Archon.gg 原页面超链接。"""
     key = translate_talent_key(key.strip())
     if key in SPEC_LIST:
-        return f"{key}天赋推荐，请输入具体天赋名称获取：\n" + "\n".join(f"  {s}" for s in SPEC_LIST[key])
+        lines = [f"**{key}** 天赋推荐，请输入具体天赋名称获取："]
+        lines += [f"- {s}" for s in SPEC_LIST[key]]
+        return "\n".join(lines)
     slug = ARCHON_SLUG.get(key)
     if not slug:
         return "未找到匹配的职业或天赋：" + key
@@ -157,12 +161,16 @@ async def talent_info(key: str) -> str:
     mp_url = f"https://www.archon.gg/wow/builds/{slug}/mythic-plus/overview/10/all-dungeons/this-week"
     raid, mp = await _fetch_archon_talent(raid_url), await _fetch_archon_talent(mp_url)
     if not raid and not mp:
-        return f"{key} 天赋获取失败：Archon.gg 没返回数据（暂无数据或被拦截，详见日志）"
-    lines = [f"{key} 天赋推荐（Archon.gg）"]
+        return (
+            f"**{key} 天赋获取失败**\n\n"
+            "Archon.gg 没返回数据（暂无数据或被拦截，详见日志）。可以手动打开原页面看："
+            f"[团本]({raid_url}) · [大秘境]({mp_url})"
+        )
+    lines = [f"**{key} 天赋推荐** · 数据来自 [Archon.gg](https://www.archon.gg/)"]
     if raid:
-        lines.append("团：" + raid)
+        lines += ["", f"**团本**（神话全 BOSS）· [原页面]({raid_url})", f"`{raid}`"]
     if mp:
-        lines.append("秘：" + mp)
+        lines += ["", f"**大秘境**（10 层全地图）· [原页面]({mp_url})", f"`{mp}`"]
     return "\n".join(lines)
 
 

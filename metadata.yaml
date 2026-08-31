@@ -2,7 +2,7 @@ name: astrbot_plugin_wow
 display_name: 魔兽世界
 desc: 魔兽世界综合插件：WCL 战绩、角色卡、榜单、BIS、词缀、日历、公会、开箱、语录、新闻、重置提醒等 16 个功能整合。指令裸词即可触发，/ 前缀可省略。
 short_desc: 魔兽世界综合工具箱（战绩/角色/榜单/BIS/词缀/日历/公会）
-version: v1.1.5
+version: v1.1.6
 author: lianzy
 repo: https://github.com/Lianzy-Baimiao/astrbot_plugin_wow
 astrbot_version: ">=4.9.2"
