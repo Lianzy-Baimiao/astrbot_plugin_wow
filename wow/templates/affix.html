@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 720px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 720px; background: #141519; padding-bottom: 18px; }
+.band { height: 110px; position: relative; background: linear-gradient(90deg, #2A220A 0%, #1A1812 50%, #141519 100%); }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #C9A227; }
+.band-bot { position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: rgba(201,162,39,.4); }
+.h-title { position: absolute; left: 24px; top: 52px; transform: translateY(-50%); font-size: 36px; font-weight: 800; color: #fff; }
+.h-short { position: absolute; left: 24px; top: 82px; transform: translateY(-50%); font-size: 16px; color: #C9A227; font-weight: 600; }
+.h-period { position: absolute; right: 24px; top: 48px; text-align: right; }
+.h-cd { font-size: 15px; color: #8D8F9C; }
+.h-reset { font-size: 13px; color: #727482; }
+.affixes { padding: 16px 24px 0; display: flex; flex-direction: column; gap: 14px; }
+.affix {
+  position: relative; background: #1D1E25; border-radius: 10px;
+  padding: 12px 16px 12px 22px; min-height: 64px;
+}
+.affix-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: #C9A227; }
+.affix-top { display: flex; align-items: center; gap: 12px; }
+.affix-icon {
+  width: 52px; height: 52px; border-radius: 8px; background: #2A2C35 center/cover no-repeat;
+  border: 1px solid rgba(255,255,255,.12); flex-shrink: 0;
+}
+.lv-chip {
+  flex-shrink: 0; display: inline-block; background: #2A2C35; border-radius: 6px;
+  color: #C9A227; font-size: 14px; font-weight: 800; padding: 3px 10px; line-height: 16px;
+}
+.affix-name { font-size: 20px; font-weight: 800; color: #ECEDF2; }
+.affix-en { font-size: 13px; color: #727482; margin-left: 8px; }
+.affix-desc { font-size: 15px; color: #8D8F9C; margin-top: 8px; line-height: 20px; }
+.foot { margin: 18px 24px 0; padding-top: 10px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="band">
+    <div class="band-top"></div>
+    <div class="band-bot"></div>
+    <div class="h-title">{{ card.title }}</div>
+    <div class="h-short">{{ card.affixes|map(attribute='name_en')|join('  ·  ') }}</div>
+    {% if period_end and card.title == '本周词缀' %}
+    <div class="h-period">
+      <div class="h-cd">重置时间</div>
+      <div class="h-reset">{{ period_end }}</div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="affixes">
+    {% for a in card.affixes %}
+    <div class="affix">
+      <div class="affix-bar"></div>
+      <div class="affix-top">
+        {% if a.icon_url %}
+        <div class="affix-icon" style="background-image: url('{{ a.icon_url }}');"></div>
+        {% else %}
+        <div class="affix-icon"></div>
+        {% endif %}
+        {% if a.level %}<span class="lv-chip">{{ a.level }}</span>{% endif %}
+        <span class="affix-name">{{ a.name_cn }}</span>
+        {% if a.name_en %}<span class="affix-en">{{ a.name_en }}</span>{% endif %}
+      </div>
+      {% if a.desc %}<div class="affix-desc">{{ a.desc }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="foot">{% if card.title == '下周词缀' %}根据 8 周轮换表推算  ·  数据来源 Raider.IO{% else %}数据来源 Raider.IO  ·  国服{% endif %}</div>
+</div>
+</body>
+</html>

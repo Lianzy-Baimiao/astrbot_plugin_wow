@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #141519; }
+body {
+  width: 940px; padding: 0;
+  background: #141519;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  color: #ECEDF2;
+  -webkit-font-smoothing: antialiased;
+}
+/* ===== 头部（高 200，全宽出血） ===== */
+.ci-header {
+  position: relative; height: 200px;
+  background: linear-gradient(140deg, {{ class_color }}75 0%, {{ class_color }}38 55%, #141519 100%);
+  overflow: hidden;
+}
+.ci-header-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {{ class_color }}; }
+.ci-header-bottom { position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: {{ class_color }}88; }
+.ci-avatar-zone { position: absolute; left: 88px; top: 50%; transform: translate(-50%, -50%); }
+.ci-glow {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 244px; height: 244px; border-radius: 50%;
+  background: radial-gradient(circle, {{ class_color }}59 0%, transparent 70%);
+}
+.ci-avatar-ring {
+  position: relative; width: 122px; height: 122px; border-radius: 50%;
+  background: rgba(0,0,0,.47); padding: 3px;
+}
+.ci-avatar {
+  width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+  border: 3px solid {{ class_color }};
+}
+.ci-class-badge {
+  position: absolute; right: -3px; bottom: -3px;
+  width: 43px; height: 43px; border-radius: 50%;
+  background: #141519; padding: 5px; border: 1px solid rgba(255,255,255,.15);
+}
+.ci-class-badge img { width: 100%; height: 100%; border-radius: 50%; }
+.ci-name-zone { position: absolute; left: 182px; top: 54%; transform: translateY(-50%); }
+.ci-name { font-size: 46px; font-weight: 800; color: #fff; line-height: 1; display: flex; align-items: center; gap: 14px; }
+.ci-faction-chip {
+  display: inline-block; font-size: 14px; font-weight: 600;
+  color: {{ faction_color }}; background: {{ faction_color }}2e;
+  border-radius: 999px; padding: 3px 12px;
+}
+.ci-realm { font-size: 17px; color: rgba(255,255,255,.65); margin-top: 12px; }
+.ci-classline { font-size: 21px; font-weight: 700; color: {{ class_color }}; margin-top: 12px; }
+.ci-classline .ci-race { font-size: 16px; font-weight: 400; color: rgba(255,255,255,.47); margin-left: 6px; }
+.ci-achv { font-size: 14px; color: rgba(255,255,255,.43); margin-top: 10px; }
+.ci-ilvl-badge {
+  position: absolute; right: 24px; top: 50%; transform: translateY(-50%);
+  width: 138px; height: 92px; border-radius: 14px;
+  background: rgba(0,0,0,.51); border: 1.5px solid {{ class_color }}96;
+  text-align: center; padding-top: 10px;
+}
+.ci-ilvl-num { font-size: 42px; font-weight: 800; color: #fff; line-height: 1; }
+.ci-ilvl-label { font-size: 14px; color: {{ class_color }}; margin-top: 6px; }
+
+/* ===== 面板（原版 drawPanel：标题竖条 + 分隔线） ===== */
+.ci-panel { margin: 18px 24px 0; background: #1D1E25; border-radius: 14px; padding: 0 20px 18px; }
+.ci-panel-head { position: relative; padding: 18px 0 14px; }
+.ci-panel-bar {
+  position: absolute; left: 0; top: 22px;
+  width: 3.5px; height: 17px; border-radius: 2px; background: {{ class_color }};
+}
+.ci-panel-title { font-size: 20px; font-weight: 800; color: #ECEDF2; margin-left: 13px; letter-spacing: 1px; }
+.ci-panel-divider { height: 1px; background: rgba(255,255,255,.09); }
+.ci-panel-ilvl { position: absolute; right: 0; top: 18px; }
+.ci-panel-ilvl .lbl { font-size: 14px; color: #8D8F9C; }
+.ci-panel-ilvl .num { font-size: 20px; font-weight: 800; color: {{ class_color }}; margin-left: 8px; }
+
+/* ===== 大秘境评分 ===== */
+.ci-score-line { display: flex; align-items: center; gap: 18px; padding-top: 18px; }
+.ci-score-num { font-size: 54px; font-weight: 800; color: {{ score_color }}; line-height: 1; }
+.ci-score-meta .ci-season-chip {
+  display: inline-block; font-size: 14px; font-weight: 600;
+  color: {{ score_color }}; background: {{ score_color }}22;
+  border-radius: 999px; padding: 3px 12px; margin-left: 12px;
+}
+.ci-score-meta .ci-score-total { font-size: 14px; color: #727482; margin-top: 4px; }
+.ci-bars { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.ci-bar-row { display: flex; align-items: center; gap: 12px; }
+.ci-bar {
+  flex: 1; height: 24px; background: #2A2C35; border-radius: 12px; overflow: hidden; position: relative;
+}
+.ci-bar-fill { height: 100%; border-radius: 12px; min-width: 9%; }
+.ci-bar-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 15px; font-weight: 600; color: rgba(255,255,255,.92); }
+.ci-bar-val { width: 90px; text-align: right; font-size: 19px; font-weight: 700; flex-shrink: 0; }
+.ci-rank { margin-top: 14px; }
+.ci-rank-row { display: flex; gap: 12px; padding: 4px 0; }
+.ci-rank-label { width: 64px; font-size: 14px; color: #8D8F9C; flex-shrink: 0; }
+.ci-rank-line { font-size: 15px; color: #ECEDF2; }
+.ci-empty { font-size: 16px; color: #727482; padding: 18px 0 6px; }
+
+/* ===== 最近大秘境 ===== */
+.ci-run-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+.ci-run-row:nth-child(odd) { background: rgba(255,255,255,.04); border-radius: 6px; margin: 0 -12px; padding: 6px 12px; }
+.ci-run-level { width: 50px; font-size: 18px; font-weight: 800; flex-shrink: 0; }
+.ci-run-name { flex: 1; font-size: 16px; }
+.ci-run-tag {
+  font-size: 13px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+  background: rgba(0,0,0,.3);
+}
+.ci-run-dur { width: 70px; font-size: 14px; color: #8D8F9C; text-align: center; }
+.ci-run-date { width: 60px; font-size: 14px; color: #727482; }
+.ci-run-score { width: 80px; text-align: right; font-size: 17px; font-weight: 700; }
+
+/* ===== 团本进度 ===== */
+.ci-raid-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+.ci-raid-row:nth-child(odd) { background: rgba(255,255,255,.04); border-radius: 6px; margin: 0 -12px; padding: 6px 12px; }
+.ci-raid-name { width: 230px; font-size: 17px; flex-shrink: 0; }
+.ci-diff { display: flex; align-items: center; gap: 6px; margin-right: 22px; }
+.ci-diff-tag { font-size: 14px; font-weight: 800; }
+.ci-cells { display: flex; gap: 3px; }
+.ci-cell { width: 8px; height: 11px; border-radius: 2px; }
+.ci-diff-count { font-size: 14px; margin-left: 3px; }
+
+/* ===== 装备（原版：品质色装等 chip + 彩色标签 + 斑马纹） ===== */
+.ci-gear { position: relative; display: flex; align-items: center; gap: 13px; height: 46px; padding: 0 12px; }
+.ci-gear:nth-child(4n+3), .ci-gear:nth-child(4n+4) { background: rgba(255,255,255,.08); border-radius: 6px; }
+.ci-gear-icon {
+  width: 38px; height: 38px; border-radius: 7px; flex-shrink: 0;
+  background: #2A2C35 center/cover no-repeat;
+  border: 1.8px solid transparent;
+}
+.ci-gear-empty-icon {
+  width: 38px; height: 38px; border-radius: 7px; flex-shrink: 0;
+  background: #25262D; border: 1px solid rgba(255,255,255,.10);
+}
+.ci-gear-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.ci-gear-name { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ci-gear-sub { display: flex; align-items: center; margin-top: 2px; }
+.ci-gear-slot { font-size: 14px; color: #727482; }
+.ci-tag {
+  display: inline-block; font-size: 13px; font-weight: 600;
+  border-radius: 4px; padding: 1px 8px; margin-left: 8px; line-height: 15px;
+}
+.ci-tag-tier { color: #F0C458; background: rgba(240,196,88,.16); }
+.ci-tag-ench { color: #76C48A; background: rgba(118,196,138,.16); }
+.ci-tag-gem { color: #7CACF0; background: rgba(124,172,240,.16); }
+.ci-gear-ilvl {
+  flex-shrink: 0; min-width: 46px; text-align: center;
+  font-size: 17px; font-weight: 800; border-radius: 12px; padding: 2px 8px;
+}
+.ci-gear-empty-name { font-size: 15px; color: #727482; }
+.ci-gear-empty-sub { font-size: 14px; color: #727482; margin-top: 2px; }
+
+/* ===== 页脚 ===== */
+.ci-footer {
+  margin: 18px 24px 0; border-top: 1px solid rgba(255,255,255,.05);
+  padding: 20px 0 14px; text-align: center; font-size: 14px; color: #727482;
+}
+</style>
+</head>
+<body>
+<div style="background: #141519;">
+  <!-- ===== 头部（高 200）===== -->
+  <div class="ci-header">
+    <div class="ci-header-top"></div>
+    <div class="ci-header-bottom"></div>
+    <div class="ci-avatar-zone">
+      <div class="ci-glow"></div>
+      <div class="ci-avatar-ring">
+        {% if thumbnail_url %}
+        <img class="ci-avatar" src="{{ thumbnail_url }}">
+        {% else %}
+        <img class="ci-avatar" src="{{ class_icon }}">
+        {% endif %}
+        <div class="ci-class-badge"><img src="{{ class_icon }}"></div>
+      </div>
+    </div>
+    <div class="ci-name-zone">
+      <div class="ci-name">{{ name }}<span class="ci-faction-chip">{{ faction }}</span></div>
+      <div class="ci-realm">{{ realm }}{% if guild %}   〈{{ guild }}〉{% endif %}</div>
+      <div class="ci-classline">{{ spec }} {{ class }}<span class="ci-race">{{ race }}</span></div>
+      <div class="ci-achv">成就点数 {{ "{:,}".format(achievement_points|int) }}</div>
+    </div>
+    <div class="ci-ilvl-badge">
+      <div class="ci-ilvl-num">{{ "%.0f"|format(ilvl) }}</div>
+      <div class="ci-ilvl-label">平均装等</div>
+    </div>
+  </div>
+
+  <!-- ===== 大秘境评分 ===== -->
+  <div class="ci-panel">
+    <div class="ci-panel-head"><span class="ci-panel-bar"></span><span class="ci-panel-title">大秘境评分</span></div>
+    <div class="ci-panel-divider"></div>
+    {% if has_mp %}
+    <div class="ci-score-line">
+      <div class="ci-score-num">{{ "%.0f"|format(score_all) }}</div>
+      <div class="ci-score-meta">
+        <span class="ci-season-chip">{{ season_cn }}</span>
+        <div class="ci-score-total">总评分</div>
+      </div>
+    </div>
+    <div class="ci-bars">
+      {% for b in [('输出', score_dps, '#F36B5A'), ('治疗', score_healer, '#3E9CF0'), ('坦克', score_tank, '#50C8A0')] if b[1] > 0 %}
+      <div class="ci-bar-row">
+        <div class="ci-bar">
+          <div class="ci-bar-fill" style="width: {{ (b[1] / 5000 * 100)|round(1) }}%; background: linear-gradient(90deg, {{ b[2] }}aa, {{ b[2] }});"></div>
+          <span class="ci-bar-label">{{ b[0] }}</span>
+        </div>
+        <div class="ci-bar-val" style="color: {{ b[2] }};">{{ "%.0f"|format(b[1]) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if rank_rows %}
+    <div class="ci-rank">
+      {% for r in rank_rows %}
+      <div class="ci-rank-row"><span class="ci-rank-label">{{ r[0] }}</span><span class="ci-rank-line">{{ r[1] }}</span></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="ci-empty">本赛季暂无大秘境记录</div>
+    {% endif %}
+  </div>
+
+  <!-- ===== 最近大秘境 ===== -->
+  {% if runs %}
+  <div class="ci-panel">
+    <div class="ci-panel-head"><span class="ci-panel-bar"></span><span class="ci-panel-title">最近大秘境</span></div>
+    <div class="ci-panel-divider"></div>
+    {% for r in runs %}
+    <div class="ci-run-row">
+      <span class="ci-run-level" style="color: {{ r.level_color }};">+{{ r.level }}</span>
+      <span class="ci-run-name">{{ r.dungeon }}</span>
+      <span class="ci-run-tag" style="color: {{ r.tag_color }}; border: 1px solid {{ r.tag_color }}55;">{{ r.tag }}</span>
+      <span class="ci-run-dur">{{ r.duration }}</span>
+      <span class="ci-run-date">{{ r.date }}</span>
+      <span class="ci-run-score" style="color: {{ class_color }};">{{ "%.0f"|format(r.score) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ===== 团本进度 ===== -->
+  <div class="ci-panel">
+    <div class="ci-panel-head"><span class="ci-panel-bar"></span><span class="ci-panel-title">团本进度</span></div>
+    <div class="ci-panel-divider"></div>
+    {% if raids %}
+    {% for r in raids %}
+    <div class="ci-raid-row">
+      <span class="ci-raid-name">{{ r.name }}</span>
+      {% for d in [('N', r.n, '#68BE7E'), ('H', r.h, '#5C98E8'), ('M', r.m, '#C67AF0')] %}
+      <div class="ci-diff">
+        <span class="ci-diff-tag" style="color: {{ d[2] }};">{{ d[0] }}</span>
+        <div class="ci-cells">
+          {% for b in range(r.total) %}
+          <div class="ci-cell" style="background: {{ (d[2] ~ '28') if b < d[1] else '#2A2C3555' }};"></div>
+          {% endfor %}
+        </div>
+        <span class="ci-diff-count" style="color: {{ d[2] if d[1] >= r.total else '#8D8F9C' }};">{{ d[1] }}/{{ r.total }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="ci-empty">暂无团本击杀记录</div>
+    {% endif %}
+  </div>
+
+  <!-- ===== 装备 ===== -->
+  <div class="ci-panel" style="margin-bottom: 18px;">
+    <div class="ci-panel-head">
+      <span class="ci-panel-bar"></span><span class="ci-panel-title">装备</span>
+      <span class="ci-panel-ilvl"><span class="lbl">平均装等</span><span class="num">{{ "%.0f"|format(ilvl) }}</span></span>
+    </div>
+    <div class="ci-panel-divider"></div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 0;">
+      {% for s in slots %}
+      <div class="ci-gear">
+        {% if s.name %}
+        <div class="ci-gear-icon" style="background-image: url('{{ s.icon_url }}'); border-color: {{ s.color }};"></div>
+        {% else %}
+        <div class="ci-gear-empty-icon"></div>
+        {% endif %}
+        <div class="ci-gear-main">
+          {% if s.name %}
+          <div class="ci-gear-name" style="color: {{ s.color }};">{{ s.name }}</div>
+          <div class="ci-gear-sub">
+            <span class="ci-gear-slot">{{ s.slot }}</span>
+            {%- if s.tier %}<span class="ci-tag ci-tag-tier">套装</span>{% endif -%}
+            {%- if s.enchant %}<span class="ci-tag ci-tag-ench">附魔</span>{% endif -%}
+            {%- if s.gems %}<span class="ci-tag ci-tag-gem">宝石×{{ s.gems|length }}</span>{% endif -%}
+          </div>
+          {% else %}
+          <div class="ci-gear-empty-name">{{ s.slot }}</div>
+          <div class="ci-gear-empty-sub">未装备</div>
+          {% endif %}
+        </div>
+        {% if s.ilvl %}
+        <div class="ci-gear-ilvl" style="color: {{ s.color }}; background: color-mix(in srgb, {{ s.color }} 38%, transparent);">{{ s.ilvl }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="ci-footer">数据来源 Raider.IO{% if last_crawled %}  ·  信息更新于 {{ last_crawled }}{% endif %}</div>
+</div>
+</body>
+</html>

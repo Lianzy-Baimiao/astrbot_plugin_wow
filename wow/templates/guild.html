@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+{# 阵营色在下方 <style> 里就要用到，Jinja 是顺序求值的，set 必须写在 style 之前 #}
+{% set FC = {"alliance": "#68A8F5", "horde": "#E46060"} %}
+{% set FCN = {"alliance": "联盟", "horde": "部落"} %}
+{% set fc = FC.get(faction, "#8D8F9C") %}
+{% set fc_cn = FCN.get(faction, faction) %}
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 900px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 900px; background: #141519; padding-bottom: 8px; }
+.band { height: 150px; position: relative; }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {{ fc }}; }
+.band-bot { position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: {{ fc }}88; }
+.band-guild { position: absolute; left: 28px; top: 62px; transform: translateY(-50%); display: flex; align-items: center; gap: 16px; }
+.guild-name { font-size: 42px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 620px; }
+.fc-chip { display: inline-block; font-size: 14px; font-weight: 600; color: {{ fc }}; background: {{ fc }}2e; border-radius: 999px; padding: 4px 14px; flex-shrink: 0; }
+.band-server { position: absolute; left: 28px; top: 98px; transform: translateY(-50%); font-size: 17px; color: rgba(255,255,255,.65); }
+.band-upd { position: absolute; left: 28px; top: 124px; transform: translateY(-50%); font-size: 14px; color: rgba(255,255,255,.41); }
+.panels { padding: 18px 24px 0; }
+.panel { background: #1D1E25; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); margin-bottom: 18px; overflow: hidden; }
+.p-titlebar { position: relative; display: flex; align-items: center; padding: 18px 20px 14px; }
+.p-bar { position: absolute; left: 20px; top: 22px; width: 3.5px; height: 17px; border-radius: 2px; background: {{ fc }}; }
+.p-title { font-size: 20px; font-weight: 800; color: #ECEDF2; margin-left: 20px; letter-spacing: 1px; }
+.p-divider { height: 1px; margin: 0 20px; background: rgba(255,255,255,.05); }
+.p-body { padding: 6px 20px 12px; }
+.raid-row { padding: 7px 0; }
+.raid-row:nth-child(odd) { background: rgba(255,255,255,.05); border-radius: 6px; margin: 0 -4px; padding: 7px 4px; }
+.raid-line1 { display: flex; align-items: center; gap: 12px; }
+.raid-name { font-size: 17px; color: #ECEDF2; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+.raid-sp { flex: 1; }
+.rk-chip { flex-shrink: 0; font-size: 13px; font-weight: 800; border-radius: 4px; padding: 1px 8px; }
+.raid-rank { font-size: 14px; color: #8D8F9C; white-space: nowrap; }
+.raid-line2 { display: flex; align-items: center; gap: 26px; margin-top: 2px; padding-left: 2px; }
+.diff { display: flex; align-items: center; gap: 7px; }
+.diff-tag { font-size: 13px; font-weight: 800; }
+.cells { display: flex; gap: 2.5px; }
+.cell { width: 7px; height: 10px; border-radius: 2px; }
+.diff-count { font-size: 13px; color: #8D8F9C; }
+.cls-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.cls-row:nth-child(odd) { background: rgba(255,255,255,.05); border-radius: 6px; margin: 0 -4px; padding: 9px 4px; }
+.cls-name { width: 130px; font-size: 15px; font-weight: 600; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cls-bar { flex: 1; height: 13px; background: #2A2C35; border-radius: 6px; overflow: hidden; }
+.cls-fill { height: 100%; border-radius: 6px; }
+.cls-count { width: 48px; text-align: right; font-size: 16px; font-weight: 800; flex-shrink: 0; }
+.cls-pct { width: 56px; text-align: right; font-size: 13px; color: #727482; flex-shrink: 0; }
+.foot { padding: 8px 24px 16px; text-align: center; font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+{% set CLS = {
+  "Warrior": "#C69B6D", "Paladin": "#F48CBA", "Hunter": "#AAD372", "Rogue": "#FFF468",
+  "Priest": "#F5F5F5", "Death Knight": "#C41E3A", "Shaman": "#0070DD", "Mage": "#3FC7EB",
+  "Warlock": "#8788EE", "Monk": "#00FF98", "Druid": "#FF7C0A",
+  "Demon Hunter": "#A330C9", "Evoker": "#33937F"
+} %}
+{% set CLSN = {
+  "Warrior": "战士", "Paladin": "圣骑士", "Hunter": "猎人", "Rogue": "潜行者",
+  "Priest": "牧师", "Death Knight": "死亡骑士", "Shaman": "萨满", "Mage": "法师",
+  "Warlock": "术士", "Monk": "武僧", "Druid": "德鲁伊", "Demon Hunter": "恶魔猎手",
+  "Evoker": "唤魔师"
+} %}
+{% set DCOL = {"N": "#68BE7E", "H": "#5C98E8", "M": "#C67AF0"} %}
+{% set maxcls = (class_dist.values()|list)|sort|last if class_dist else 1 %}
+<div class="root">
+  <div class="band" style="background: linear-gradient(135deg, {{ fc }}75 0%, {{ fc }}38 55%, #141519 100%);">
+    <div class="band-top"></div>
+    <div class="band-bot"></div>
+    <div class="band-guild"><span class="guild-name">{{ name }}</span><span class="fc-chip">{{ fc_cn }}</span></div>
+    <div class="band-server">{{ realm }}      成员 {{ members }} 人</div>
+    <div class="band-upd">{% if last_crawled %}信息更新于 {{ last_crawled }}{% else %}成就点数 {{ "{:,}".format(achievement_points or 0) }}{% endif %}</div>
+  </div>
+
+  <div class="panels">
+    <div class="panel">
+      <div class="p-titlebar"><span class="p-bar"></span><span class="p-title">团本进度</span></div>
+      <div class="p-divider"></div>
+      <div class="p-body">
+        {% if raids %}
+        {% for r in raids %}
+        {% set rt = DCOL.get(r.rank_tag, "#8D8F9C") %}
+        <div class="raid-row">
+          <div class="raid-line1">
+            <span class="raid-name" title="{{ r.slug }}">{{ r.name }}</span>
+            <span class="raid-sp"></span>
+            {% if r.rank_tag %}<span class="rk-chip" style="color: {{ rt }}; background: color-mix(in srgb, {{ rt }} 22%, transparent);">{{ r.rank_tag }}</span>{% endif %}
+            {% if (r.rank_world or 0) > 0 %}
+            <span class="raid-rank">世界 #{{ "{:,}".format(r.rank_world) }}    国服 #{{ "{:,}".format(r.rank_region) }}    本服 #{{ "{:,}".format(r.rank_realm) }}</span>
+            {% endif %}
+          </div>
+          <div class="raid-line2">
+            {% for d in [('N', r.n, '#68BE7E'), ('H', r.h, '#5C98E8'), ('M', r.m, '#C67AF0')] %}
+            <div class="diff">
+              <span class="diff-tag" style="color: {{ d[2] }};">{{ d[0] }}</span>
+              <span class="cells">{% for b in range(r.total) %}<span class="cell" style="background: {{ (d[2] ~ '2e') if b < d[1] else '#2A2C3555' }};"></span>{% endfor %}</span>
+              <span class="diff-count" style="color: {{ d[2] if d[1] >= r.total else '#8D8F9C' }};">{{ d[1] }}/{{ r.total }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div style="font-size: 15px; color: #727482; padding: 8px 0;">暂无团本击杀记录</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if class_dist %}
+    <div class="panel" style="margin-bottom: 6px;">
+      <div class="p-titlebar"><span class="p-bar"></span><span class="p-title">职业分布</span></div>
+      <div class="p-divider"></div>
+      <div class="p-body">
+        {% for cls, n in class_dist.items() %}
+        {% set cc = CLS.get(cls, "#B4B6BE") %}
+        <div class="cls-row">
+          <span class="cls-name" style="color: {{ cc }};">{{ CLSN.get(cls, cls) }}</span>
+          <div class="cls-bar"><div class="cls-fill" style="width: {{ ([100*n / maxcls, 6]|max)|round(1) }}%; background: linear-gradient(90deg, {{ cc }}99, {{ cc }});"></div></div>
+          <span class="cls-count">{{ n }}</span>
+          <span class="cls-pct">{{ ("%.1f"|format(100.0*n / members)) if members else "0" }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="foot">数据来源 Raider.IO  ·  国服{% if profile_url %}  ·  <a href="{{ profile_url }}" style="color:#6F9EF0;text-decoration:none;">查看详情</a>{% endif %}</div>
+</div>
+</body>
+</html>

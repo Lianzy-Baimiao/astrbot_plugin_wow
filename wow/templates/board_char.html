@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+{# 职业色在下方 <style> 里就要用到，Jinja 是顺序求值的，set 必须写在 style 之前 #}
+{% set CLS = {
+  "战士": "#C69B6D", "圣骑士": "#F48CBA", "猎人": "#AAD372",
+  "潜行者": "#FFF468", "牧师": "#F5F5F5", "死亡骑士": "#C41E3A",
+  "萨满": "#0070DD", "法师": "#3FC7EB", "术士": "#8788EE",
+  "武僧": "#00FF98", "德鲁伊": "#FF7C0A", "恶魔猎手": "#A330C9",
+  "唤魔师": "#33937F", "": "#B4B6BE"
+} %}
+{% set cc = CLS.get((class or '')|string, "#B4B6BE") %}
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 900px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 900px; height: 240px; background: #141519; position: relative; overflow: hidden; }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {{ cc }}; }
+.avatar-wrap { position: absolute; left: 134px; top: 120px; transform: translate(-50%, -50%); }
+.avatar-ring { width: 114px; height: 114px; border-radius: 50%; background: rgba(0,0,0,.47); padding: 3px; }
+.avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid {{ cc }}; display: block; }
+.name-zone { position: absolute; left: 202px; top: 120px; transform: translateY(-50%); }
+.nick-label { font-size: 15px; color: rgba(255,255,255,.51); }
+.name-line { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+.name { font-size: 40px; font-weight: 800; color: #fff; line-height: 1; }
+.cls-chip {
+  display: inline-block; font-size: 13px; font-weight: 600;
+  color: {{ cc }}; background: {{ cc }}2e; border-radius: 999px; padding: 4px 14px;
+}
+.realm { font-size: 16px; color: rgba(255,255,255,.65); margin-top: 12px; }
+.right { position: absolute; right: 24px; top: 120px; transform: translateY(-50%); width: 190px; text-align: center; }
+.ilvl { font-size: 44px; font-weight: 800; color: #fff; line-height: 1; }
+.ilvl-label { font-size: 14px; color: {{ cc }}; margin-top: 6px; }
+.score { font-size: 24px; font-weight: 800; color: #FFC14D; margin-top: 14px; line-height: 1; }
+.score-label { font-size: 14px; color: rgba(255,255,255,.59); margin-top: 6px; }
+.foot {
+  position: absolute; left: 24px; right: 24px; bottom: 0; height: 42px;
+  border-top: 1px solid rgba(255,255,255,.05);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: #727482;
+}
+</style>
+</head>
+<body>
+<div class="root" style="background: linear-gradient(135deg, {{ cc }}75 0%, {{ cc }}38 55%, #141519 100%);">
+  <div class="band-top"></div>
+  <div class="avatar-wrap">
+    <div class="avatar-ring">
+      {% if thumbnail_url %}
+      <img class="avatar" src="{{ thumbnail_url }}">
+      {% else %}
+      <img class="avatar" src="https://cdn.raiderio.net/images/wow/icons/large/classicon_misc.jpg">
+      {% endif %}
+    </div>
+  </div>
+  <div class="name-zone">
+    {% if nickname %}<div class="nick-label">群友 · {{ nickname }}</div>{% endif %}
+    <div class="name-line">
+      <span class="name">{{ name }}</span>
+      {% if class %}<span class="cls-chip">{{ class }} {{ spec }}</span>{% endif %}
+    </div>
+    <div class="realm">{{ realm_cn }}</div>
+  </div>
+  <div class="right">
+    <div class="ilvl">{{ "%.0f"|format(ilvl or 0) }}</div>
+    <div class="ilvl-label">平均装等</div>
+    <div class="score">{{ "%.0f"|format(score or 0) }}</div>
+    <div class="score-label">{% if (rank_region or 0) > 0 %}国服 #{{ "{:,}".format(rank_region|int) }}{% else %}大秘境评分{% endif %}</div>
+  </div>
+  <div class="foot">数据来源 Raider.IO{% if source == 'wcl' %} / Warcraft Logs{% endif %}</div>
+</div>
+</body>
+</html>

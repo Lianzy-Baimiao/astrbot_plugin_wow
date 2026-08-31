@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 本地凭证 / 运行时数据（切勿提交）
+wcl_cred.json
+.env
+*.db
+*.sqlite3
+*.log
+prices.xlsx
+cache/
+
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

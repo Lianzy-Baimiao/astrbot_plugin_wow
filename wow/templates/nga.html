@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #F2F3F5; }
+body {
+  width: 832px; padding: 24px;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  color: #33383F; -webkit-font-smoothing: antialiased;
+}
+.panel {
+  background: #FFFFFF; border-radius: 18px;
+  border: 1px solid #E5E6EB; padding: 32px;
+}
+.p-forum { font-size: 21px; color: #8A9099; line-height: 1.5; }
+.p-title { font-size: 33px; font-weight: 700; color: #1D2129; line-height: 1.44; margin-top: 2px; }
+.p-meta { font-size: 21px; color: #8A9099; line-height: 1.5; margin-top: 2px; }
+.rule { height: 1px; background: #EDEEF0; margin: 20px 0; }
+.fl { position: relative; }
+.fl-bar {
+  position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 4px; border-radius: 2px; background: #2F6FE4;
+}
+.fl-head { display: flex; align-items: baseline; gap: 12px; padding-left: 16px; }
+.fl-lou { font-size: 24px; font-weight: 700; color: #2F6FE4; line-height: 1.5; }
+.fl-author { font-size: 24px; font-weight: 700; color: #1D2129; line-height: 1.6; }
+.fl-date { font-size: 21px; color: #8A9099; line-height: 1.5; }
+.fl-body { margin-top: 6px; font-size: 25px; line-height: 1.7; color: #33383F; white-space: pre-wrap; word-break: break-word; }
+.fl-img { margin: 12px auto 0; max-width: 720px; display: block; border: 1px solid #E5E6EB; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="panel">
+  {% if forum %}<div class="p-forum">版块：{{ forum }}</div>{% endif %}
+  <div class="p-title">{{ title }}</div>
+  <div class="p-meta">共 {{ replies }} 条回复</div>
+  {% for p in posts %}
+  <div class="rule"></div>
+  <div class="fl">
+    <div class="fl-bar"></div>
+    <div class="fl-head">
+      <span class="fl-lou">{{ p.floor_label }}</span>
+      <span class="fl-author">{{ p.author }}</span>
+      {% if p.date %}<span class="fl-date">{{ p.date }}</span>{% endif %}
+    </div>
+    {% if p.content %}<div class="fl-body">{{ p.content }}</div>{% endif %}
+    {% for img in p.images %}
+    <img class="fl-img" src="{{ img }}" onerror="this.style.display='none'">
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+</body>
+</html>

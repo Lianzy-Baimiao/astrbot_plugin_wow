@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #121318; }
+body { width: 880px; height: 420px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 880px; height: 420px; background: #121318; position: relative; overflow: hidden; }
+.top-line { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #FFC14D; }
+.bot-line { position: absolute; bottom: 0; left: 0; right: 0; height: 1.5px; background: rgba(255,255,255,.12); }
+.quote-wrap {
+  position: absolute; left: 0; right: 0; top: 30px; bottom: 96px;
+  display: flex; align-items: center; justify-content: center;
+}
+.quote {
+  max-width: 784px; text-align: center; font-size: 30px; font-weight: 700;
+  color: #ECEDF2; line-height: 44px;
+}
+.divider { position: absolute; left: 104px; right: 104px; top: 300px; height: 1px; background: rgba(255,255,255,.16); }
+.boss {
+  position: absolute; left: 0; right: 0; top: 340px; transform: translateY(-50%);
+  text-align: center; font-size: 24px; font-weight: 800; color: #FFC14D;
+}
+.where {
+  position: absolute; left: 0; right: 0; top: 372px; transform: translateY(-50%);
+  text-align: center; font-size: 15px; color: #6E707E;
+}
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="top-line"></div>
+  <div class="quote-wrap">
+    <div class="quote">{{ q.line }}</div>
+  </div>
+  <div class="divider"></div>
+  <div class="boss">—— {{ q.boss }}</div>
+  {% if q.where %}<div class="where">{{ q.where }}</div>{% endif %}
+  <div class="bot-line"></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #FFFFFF; }
+body { width: 1500px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #000; -webkit-font-smoothing: antialiased; }
+.root { width: 1500px; height: 100%; background: #fff; border: 2px solid #000; padding: 2px; }
+.inner { padding: 8px 0 16px; }
+.title { font-size: 92px; font-weight: 800; padding: 8px 24px 0; letter-spacing: 1px; }
+.title-u { display: inline-block; width: 100%; border-bottom: 5px solid #000; padding-bottom: 4px; }
+.sub { font-size: 42px; font-weight: 700; padding: 26px 24px 0; }
+.tbl { margin: 14px 24px 0; border: 1px solid #D2D6DC; }
+.thead { background: #F2F4F7; font-size: 38px; font-weight: 700; color: #41464E; }
+.tr { display: flex; align-items: center; height: 58px; border-bottom: 1px solid #D2D6DC; }
+.thead .tr { height: 58px; }
+.tr:last-child { border-bottom: none; }
+.t-name { width: 676px; flex-shrink: 0; padding-left: 20px; }
+.t-rate { width: 380px; flex-shrink: 0; text-align: right; padding-right: 30px; border-left: 1px solid #D2D6DC; }
+.t-samples { flex: 1; text-align: right; padding-right: 31px; border-left: 1px solid #D2D6DC; }
+.tbody .tr { height: 56px; font-size: 42px; font-weight: 700; border-top: 1px solid #E2E5EA; }
+.tbody .tr:first-child { border-top: none; }
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="inner">
+    <div class="title"><span class="title-u">大秘境限时成功率</span></div>
+    <div class="sub">第 {{ period }} 周限时率（基于 {{ level }} 层）：</div>
+    <div class="tbl">
+      {% if rows %}
+      <div class="thead">
+        <div class="tr">
+          <div class="t-name">副本名称</div>
+          <div class="t-rate">成功率</div>
+          <div class="t-samples">样本数</div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="tbody">
+        {% for r in rows %}
+        <div class="tr">
+          <div class="t-name">{{ r.name }}</div>
+          <div class="t-rate">{{ "%.2f"|format(r.on_time_percent) }}%</div>
+          <div class="t-samples">{{ r.total_runs }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

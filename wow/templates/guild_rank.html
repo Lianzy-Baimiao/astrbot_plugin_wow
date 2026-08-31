@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+{# 难度色在下方 <style> 里就要用到，Jinja 是顺序求值的，set 必须写在 style 之前 #}
+{% set DCOL = {"史诗": "#C67AF0", "英雄": "#5C98E8", "普通": "#68BE7E", "随机": "#8D8F9C"} %}
+{% set dc = DCOL.get(difficulty, "#8D8F9C") %}
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 900px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 900px; background: #141519; }
+.band { height: 120px; position: relative; }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {{ dc }}; }
+.band-bot { position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: {{ dc }}88; }
+.h-raid { position: absolute; left: 28px; top: 54px; transform: translateY(-50%); display: flex; align-items: center; gap: 14px; }
+.raid-name { font-size: 34px; font-weight: 800; color: #fff; }
+.h-diffchip { display: inline-block; font-size: 14px; font-weight: 700; color: {{ dc }}; background: {{ dc }}2e; border-radius: 999px; padding: 4px 14px; }
+.h-sub { position: absolute; left: 28px; top: 88px; transform: translateY(-50%); font-size: 15px; color: rgba(255,255,255,.63); }
+.h-total { position: absolute; right: 28px; top: 88px; transform: translateY(-50%); font-size: 14px; color: rgba(255,255,255,.41); }
+.rows { padding: 2px 0 4px; }
+.row { display: flex; align-items: center; height: 46px; padding: 0 22px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.10); border-radius: 6px; }
+.rank { width: 48px; text-align: center; font-size: 24px; font-weight: 800; flex-shrink: 0; }
+.r-gold { color: #D4AF37; } .r-silver { color: #C8CDD7; }
+.r-bronze { color: #CDA06E; } .r-plain { color: #8C8F9B; }
+.main { flex: 1; min-width: 0; }
+.gname { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grealm { font-size: 13px; color: #727482; margin-top: 1px; }
+.prog-chip { flex-shrink: 0; font-size: 14px; font-weight: 700; border-radius: 6px; padding: 3px 12px; }
+.kill-date { width: 100px; text-align: center; font-size: 14px; color: #8D8F9C; flex-shrink: 0; white-space: nowrap; }
+.wrank { width: 110px; text-align: right; font-size: 14px; color: #8D8F9C; flex-shrink: 0; white-space: nowrap; }
+.foot { margin: 12px 24px 0; padding: 10px 0 14px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+{% set FC = {"alliance": "#68A8F5", "horde": "#E46060"} %}
+<div class="root">
+  <div class="band" style="background: linear-gradient(135deg, {{ dc }}59 0%, {{ dc }}2e 55%, #141519 100%);">
+    <div class="band-top"></div>
+    <div class="band-bot"></div>
+    <div class="h-raid"><span class="raid-name">{{ raid }}</span><span class="h-diffchip">{{ difficulty }}</span></div>
+    <div class="h-sub">国服首杀排行  TOP {{ rows|length }}</div>
+    <div class="h-total">数据来源 Raider.IO</div>
+  </div>
+  <div class="rows">
+    {% for r in rows %}
+    {% set gfc = FC.get(r.faction, "#ECEDF2") %}
+    <div class="row">
+      <div class="rank {% if loop.index == 1 %}r-gold{% elif loop.index == 2 %}r-silver{% elif loop.index == 3 %}r-bronze{% else %}r-plain{% endif %}">{{ loop.index }}</div>
+      <div class="main">
+        <div class="gname" style="color: {{ gfc }};">{{ r.guild }}</div>
+        <div class="grealm">〈{{ r.realm }}〉</div>
+      </div>
+      {% if r.progress or r.killed %}
+      <span class="prog-chip" style="color: {{ dc }}; background: color-mix(in srgb, {{ dc }} 22%, transparent);">{{ r.progress or (r.killed ~ ' 击杀') }}</span>
+      {% endif %}
+      <span class="kill-date">{% if r.last_kill %}通关 {{ r.last_kill }}{% endif %}</span>
+      <span class="wrank">世界 #{{ "{:,}".format(r.rank or 0) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="foot">团本排行 [难度] [团本] · 数据来源 Raider.IO · 国服</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body {
+  width: 700px;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  color: #ECEDF2; -webkit-font-smoothing: antialiased;
+}
+.root { width: 700px; background: #141519; padding-bottom: 10px; }
+.band {
+  height: 104px; position: relative;
+  background: linear-gradient(90deg, #5a4a1a 0%, #3a331a 55%, #141519 100%);
+}
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #FFC14D; }
+.h-title { position: absolute; left: 24px; top: 44px; transform: translateY(-50%); font-size: 30px; font-weight: 800; color: #fff; letter-spacing: 1px; }
+.h-sub { position: absolute; left: 24px; top: 78px; transform: translateY(-50%); font-size: 13px; color: rgba(255,255,255,.62); }
+.rows { padding: 2px 0 4px; }
+.grp-head {
+  display: flex; align-items: center; gap: 10px;
+  margin: 12px 14px 4px; padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.grp-bar { width: 4px; height: 18px; border-radius: 2px; background: #FFC14D; }
+.grp-name { font-size: 19px; font-weight: 800; color: #ECEDF2; }
+.grp-meta { font-size: 12px; color: #727482; }
+.row { display: flex; align-items: center; height: 62px; padding: 0 14px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.07); border-radius: 8px; }
+.rank { width: 42px; text-align: center; font-size: 21px; font-weight: 800; flex-shrink: 0; }
+.r-gold { color: #FFC14D; } .r-silver { color: #C8CDD7; }
+.r-bronze { color: #CDA06E; } .r-plain { color: #ECEDF2; }
+.icon {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  background: #2A2C35 center/cover no-repeat;
+  border: 1.5px solid rgba(255,255,255,.18);
+  margin-right: 12px;
+}
+.name { width: 92px; flex-shrink: 0; font-size: 17px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-zone { flex: 1; min-width: 0; }
+.bar-track {
+  height: 16px; background: #2A2C35; border-radius: 8px; overflow: hidden; position: relative;
+}
+.bar-fill { height: 100%; border-radius: 8px; }
+.bar-pct {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 12px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8);
+}
+.bar-meta { font-size: 11px; color: #727482; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rating {
+  flex-shrink: 0; margin: 0 14px; text-align: center;
+}
+.rating-chip {
+  display: inline-block; min-width: 32px; text-align: center;
+  font-size: 18px; font-weight: 900; border-radius: 8px; padding: 2px 8px;
+}
+.right { text-align: right; flex-shrink: 0; width: 86px; }
+.val { font-size: 19px; font-weight: 800; }
+.val-sub { font-size: 11px; color: #8D8F9C; margin-top: 2px; white-space: nowrap; }
+.foot {
+  margin: 10px 20px 0; padding: 8px 0 12px; text-align: center;
+  border-top: 1px solid rgba(255,255,255,.05);
+  font-size: 12px; color: #727482;
+}
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="band">
+    <div class="band-top"></div>
+    <div class="h-title">{{ title }}</div>
+    <div class="h-sub">数据来源 mythicstats.com · 当前赛季 · 输出/防御/治疗分段，条长 = 段内相对第一</div>
+  </div>
+  {% set RC = {"S": "#FFC14D", "A": "#F59E0B", "B": "#60A5FA", "C": "#4ADE80", "D": "#9CA3AF", "F": "#E08A8A"} %}
+  {% set ROLE_C = {"damage": "#E0796B", "tank": "#6FA8DC", "healer": "#7BD88F"} %}
+  {% for g in groups %}
+  <div class="grp-head">
+    <span class="grp-bar" style="background: {{ ROLE_C.get(g.role, '#FFC14D') }};"></span>
+    <span class="grp-name">{{ g.label }}</span>
+    <span class="grp-meta">{{ g.rows|length }} 个专精 · 条长 = 段内相对第一</span>
+  </div>
+  {% set max_avg = g.rows|map(attribute='average_num')|max %}
+  <div class="rows">
+    {% for r in g.rows %}
+    {% set ratio = (r.average_num / max_avg * 100) if max_avg > 0 else 0 %}
+    {% set bar_col = '#4ADE80' if ratio >= 95 else ('#86C9F0' if ratio >= 85 else ('#C9A227' if ratio >= 70 else '#E08A8A')) %}
+    <div class="row">
+      <div class="rank {% if loop.index == 1 %}r-gold{% elif loop.index == 2 %}r-silver{% elif loop.index == 3 %}r-bronze{% else %}r-plain{% endif %}">{{ loop.index }}</div>
+      <div class="icon" style="background-image: url('{{ r.img }}');"></div>
+      <div class="name">{{ r.spec }}</div>
+      <div class="bar-zone">
+        <div class="bar-track">
+          <div class="bar-fill" style="width: {{ ratio|round(1) }}%; background: linear-gradient(90deg, {{ bar_col }}88, {{ bar_col }});"></div>
+          <span class="bar-pct">{{ ratio|round(1) }}%</span>
+        </div>
+        <div class="bar-meta">最高 {{ r.top_cn }} · 样本 {{ r.sample_cn }}</div>
+      </div>
+      <div class="rating">
+        <span class="rating-chip" style="color: {{ RC.get(r.rating, '#9CA3AF') }}; background: {{ RC.get(r.rating, '#9CA3AF') }}26;">{{ r.rating }}</span>
+      </div>
+      <div class="right">
+        <div class="val">{{ r.average_cn }}</div>
+        <div class="val-sub">平均 DPS</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  <div class="foot">大秘境 输出/防御/治疗 排行 · 条长 = 段内平均DPS / 该段第一 · 仅供参考</div>
+</div>
+</body>
+</html>

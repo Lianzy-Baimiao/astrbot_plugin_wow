@@ -1,0 +1,45 @@
+{
+  "wcl_client_id": {
+    "description": "Warcraft Logs API Client ID（用于 WCL 战绩查询，可选）",
+    "type": "string",
+    "default": "",
+    "hint": "https://www.warcraftlogs.com/api/clients/ 申请。留空时从环境变量 WCL_CLIENT_ID / wcl_cred.json 读取"
+  },
+  "wcl_client_secret": {
+    "description": "Warcraft Logs API Client Secret",
+    "type": "string",
+    "default": "",
+    "hint": "与 Client ID 配套的密钥，https://www.warcraftlogs.com/api/clients/ 查看"
+  },
+  "default_realm": {
+    "description": "公会查询默认服务器",
+    "type": "string",
+    "default": "影之哀伤"
+  },
+  "news_groups": {
+    "description": "魔兽新闻定时推送的群（填写 unified_msg_origin 或群号，可多个）",
+    "type": "list",
+    "default": [],
+    "hint": "留空则不自动推送，仅手动 /魔兽新闻 查询"
+  },
+  "reset_groups": {
+    "description": "魔兽重置提醒推送的群（unified_msg_origin 或群号，可多个）",
+    "type": "list",
+    "default": []
+  },
+  "reset_time": {
+    "description": "重置提醒推送时间（小时:分钟，周四）",
+    "type": "string",
+    "default": "06:50"
+  },
+  "weekly_report_groups": {
+    "description": "周报定时推送的群（unified_msg_origin 或群号，可多个）",
+    "type": "list",
+    "default": []
+  },
+  "weekly_report_day": {
+    "description": "周报推送日（1=周一 ... 7=周日，建议周三，因周四重置），推送时间固定 20:00",
+    "type": "int",
+    "default": 3
+  }
+}

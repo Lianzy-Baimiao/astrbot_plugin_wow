@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 880px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 880px; background: #141519; }
+.band { height: 96px; position: relative; background: linear-gradient(90deg, #b08a3a 0%, #6a5520 55%, #141519 100%); }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #FFC14D; }
+.h-title { position: absolute; left: 28px; top: 44px; transform: translateY(-50%); font-size: 30px; font-weight: 800; color: #fff;
+  max-width: 640px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-sub { position: absolute; left: 28px; top: 74px; transform: translateY(-50%); font-size: 15px; color: rgba(255,255,255,.67); }
+.rows { padding: 4px 0 4px; }
+.row { display: flex; align-items: center; height: 46px; padding: 0 22px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.10); border-radius: 6px; }
+.qdot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-right: 16px; }
+.name { flex: 1; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qchip {
+  flex-shrink: 0; margin-left: 14px; border-radius: 10px; height: 20px; line-height: 20px;
+  font-size: 13px; padding: 0 11px;
+}
+.score { width: 90px; text-align: right; font-size: 16px; font-weight: 800; color: #86CF96; flex-shrink: 0; margin-left: 14px; }
+.foot { margin: 12px 24px 0; padding: 10px 0 14px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="band">
+    <div class="band-top"></div>
+    <div class="h-title">{{ nick }} 的开箱结果</div>
+    <div class="h-sub">共 {{ rows|length }} 件 · 红手积分 +{{ "%.0f"|format(total) }}</div>
+  </div>
+  <div class="rows">
+    {% for r in rows %}
+    <div class="row">
+      <span class="qdot" style="background: {{ r.color }};"></span>
+      <span class="name" style="color: {{ r.color }};">{{ r.name }}</span>
+      <span class="qchip" style="color: {{ r.color }}; background: color-mix(in srgb, {{ r.color }} 22%, transparent);">{{ r.quality }}</span>
+      <span class="score">+{{ r.score }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="foot">开箱纯属娱乐，红手全靠运气</div>
+</div>
+</body>
+</html>

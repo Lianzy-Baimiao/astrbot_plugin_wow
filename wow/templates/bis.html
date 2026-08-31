@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 900px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 900px; background: #141519; padding-bottom: 16px; }
+.h-title { font-size: 28px; font-weight: 800; color: #fff; padding: 30px 24px 0; letter-spacing: 1px; }
+.h-sub { font-size: 14px; color: #8D8F9C; padding: 8px 24px 0; }
+.sec {
+  font-size: 18px; font-weight: 800; color: #FFC14D;
+  padding: 20px 24px 8px; letter-spacing: 1px;
+}
+.row-line {
+  font-size: 17px; color: #ECEDF2; padding: 3px 24px; line-height: 26px;
+  display: flex; align-items: baseline; white-space: nowrap;
+}
+.row-num { width: 30px; color: #C9A227; flex-shrink: 0; }
+.row-name { max-width: 520px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
+.row-src { color: #8CB2F0; font-size: 14px; margin-left: 10px; flex-shrink: 0; }
+.row-sp { flex: 1; }
+.row-val { font-weight: 700; margin-left: 12px; flex-shrink: 0; }
+.row-gain { color: #86CF96; font-size: 15px; margin-left: 12px; flex-shrink: 0; }
+.row-sec { font-size: 16px; color: #ECEDF2; padding: 3px 24px; line-height: 26px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.foot { margin: 20px 24px 0; padding-top: 12px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 13px; color: #727482; }
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="h-title">装备BIS推荐 · {{ spec }}</div>
+  <div class="h-sub">bloodmallet 仿真 · SimulationCraft · 单体木桩</div>
+
+  <div class="sec">【饰品推荐 Top3】({{ ref_ilvl }}装等 · 基准DPS {{ "%.0f"|format(base) }})</div>
+  {% if not trinkets %}
+  <div class="row-sec">暂无数据</div>
+  {% endif %}
+  {% for t in trinkets %}
+  <div class="row-line">
+    <span class="row-num">{{ loop.index }}.</span>
+    <span class="row-name">{{ t.name }}</span>
+    {% if t.source %}<span class="row-src">[{{ t.source }}]</span>{% endif %}
+    <span class="row-sp"></span>
+    <span class="row-val">DPS {{ "%.0f"|format(t.dps) }}</span>
+    <span class="row-gain">{% if base > 0 %}{% if t.pct > 0 %}+{% endif %}{{ "%.2f"|format(t.pct) }}%{% else %}持平{% endif %}</span>
+  </div>
+  {% endfor %}
+
+  {% if secondary %}
+  <div class="sec">【最佳副属性分配】</div>
+  <div class="row-sec">{% for s in secondary %}{% if not loop.first %} / {% endif %}{{ s.name }} {{ s.value }}{% endfor %}{% if secondary_dps %}   （仿真DPS {{ "%.0f"|format(secondary_dps) }}）{% endif %}</div>
+  {% endif %}
+
+  {% if race %}
+  <div class="sec">【最佳种族】</div>
+  <div class="row-sec">{{ race.name }}   （仿真DPS {{ "%.0f"|format(race.value) }}）</div>
+  {% endif %}
+
+  <div class="foot">数据来源 Bloodmallet  ·  仅供参考，实战请以 WCL 为准</div>
+</div>
+</body>
+</html>

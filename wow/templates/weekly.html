@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 900px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 900px; background: #141519; }
+.band { height: 120px; position: relative; background: linear-gradient(90deg, #5a4a1a 0%, #3a331a 55%, #141519 100%); }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #FFC14D; }
+.h-title { position: absolute; left: 28px; top: 54px; transform: translateY(-50%); font-size: 34px; font-weight: 800; color: #fff; }
+.h-sub { position: absolute; left: 28px; top: 90px; transform: translateY(-50%); font-size: 15px; color: rgba(255,255,255,.62); }
+.rows { padding: 2px 0 4px; }
+.row { display: flex; align-items: center; height: 52px; padding: 0 14px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.10); border-radius: 6px; }
+.rank { width: 44px; text-align: center; font-size: 20px; font-weight: 800; flex-shrink: 0; }
+.r-up { color: #FFC14D; } .r-down { color: #E08A8A; }
+.r-gold { color: #FFC14D; } .r-silver { color: #C8CDD7; }
+.r-bronze { color: #CDA06E; } .r-plain { color: #8C8F9B; }
+.main { flex: 1; min-width: 0; }
+.nick { font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.char { font-size: 13px; color: #727482; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.char .wcl { color: #C9A227; }
+.badge { font-size: 12px; flex-shrink: 0; margin-right: 16px; white-space: nowrap; }
+.b-hard { color: #86CF96; } .b-fish { color: #E08A8A; }
+.cur { width: 120px; text-align: right; font-size: 16px; color: #8D8F9C; flex-shrink: 0; margin-right: 16px; }
+.delta { width: 110px; text-align: right; font-size: 22px; font-weight: 800; flex-shrink: 0; }
+.d-up { color: #86CF96; } .d-down { color: #E08A8A; } .d-zero { color: #727482; }
+.foot { margin: 12px 24px 0; padding: 10px 0 14px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="band">
+    <div class="band-top"></div>
+    <div class="h-title">本周进步榜</div>
+    <div class="h-sub">对比上周 · 最努力的在最上，摸鱼的沉底</div>
+  </div>
+  <div class="rows">
+    {% for r in rows %}
+    {% set dl = r.delta if r.delta is not none else 0 %}
+    <div class="row">
+      <div class="rank {% if r.delta is not none and r.delta > 0 %}r-gold{% elif r.delta is not none and r.delta < 0 %}r-down{% elif loop.index == 1 %}r-gold{% elif loop.index == 2 %}r-silver{% elif loop.index == 3 %}r-bronze{% else %}r-plain{% endif %}">{{ loop.index }}</div>
+      <div class="main">
+        <div class="nick" style="color: {% if r.delta is not none and r.delta < 0 %}#E08A8A{% else %}#ECEDF2{% endif %};">{{ r.nickname or r.char_name }}</div>
+        <div class="char">{% if r.nickname %}{{ r.char_name }}{% endif %}〈{{ r.realm }}〉{% if r.source == 'wcl' %}<span class="wcl"> · WCL</span>{% endif %}</div>
+      </div>
+      {% if r.delta is not none and r.delta >= 100 %}
+      <span class="badge b-hard">💪努力</span>
+      {% elif r.delta is not none and r.delta < 0 %}
+      <span class="badge b-fish">🐟摸鱼</span>
+      {% endif %}
+      <div class="cur">{{ "%.0f"|format(r.score) }} 分</div>
+      <div class="delta {% if r.delta is none %}d-zero{% elif r.delta > 0 %}d-up{% elif r.delta < 0 %}d-down{% else %}d-zero{% endif %}">
+        {%- if r.delta is none %}新增{% elif r.delta > 0 %}▲+{{ "%.0f"|format(r.delta) }}{% elif r.delta < 0 %}▼{{ "%.0f"|format(r.delta) }}{% else %}— 0{% endif -%}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="foot">同来源周对比 · Raider.IO / Warcraft Logs · 用「周报」更新基线</div>
+</div>
+</body>
+</html>

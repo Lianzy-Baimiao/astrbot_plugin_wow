@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 900px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 900px; background: #141519; }
+.band {
+  height: 128px; position: relative;
+  background: linear-gradient(90deg, #2A220A 0%, #1A1812 50%, #141519 100%);
+}
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #FFC14D; }
+.h-title { position: absolute; left: 28px; top: 54px; transform: translateY(-50%); font-size: 34px; font-weight: 800; color: #fff; }
+.h-sub { position: absolute; left: 28px; top: 92px; transform: translateY(-50%); font-size: 15px; color: #8D8F9C; }
+.rows { padding: 8px 0 4px; }
+.row { display: flex; align-items: center; height: 38px; padding: 0 14px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.10); border-radius: 6px; }
+.r-rank { width: 48px; text-align: center; font-size: 18px; font-weight: 800; flex-shrink: 0; }
+.r-gold { color: #FFC14D; } .r-silver { color: #C8CDD7; }
+.r-bronze { color: #CDA06E; } .r-plain { color: #ECEDF2; }
+.r-spec { width: 190px; font-size: 17px; font-weight: 600; flex-shrink: 0; }
+.r-bar {
+  flex: 1; height: 12px; background: #2A2C35; border-radius: 6px; overflow: hidden; margin: 0 8px 0 0;
+}
+.r-fill { height: 100%; border-radius: 6px; }
+.r-dps { width: 120px; text-align: right; font-size: 17px; font-weight: 800; flex-shrink: 0; }
+.r-pct { width: 62px; text-align: right; font-size: 14px; color: #8D8F9C; flex-shrink: 0; }
+.foot { margin: 12px 24px 0; padding-top: 10px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: #727482; }
+.foot-low { padding: 4px 0 14px; text-align: center; font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+{% set CLS = {
+  "warrior": "#C69B6D", "paladin": "#F48CBA", "hunter": "#AAD372",
+  "rogue": "#FFF468", "priest": "#F5F5F5", "death_knight": "#C41E3A",
+  "shaman": "#0070DD", "mage": "#3FC7EB", "warlock": "#8788EE",
+  "monk": "#00FF98", "druid": "#FF7C0A", "demon_hunter": "#A330C9",
+  "evoker": "#33937F"
+} %}
+<div class="root">
+  <div class="band">
+    <div class="band-top"></div>
+    <div class="h-title">专精强度榜 · {{ "多目标" if aoe else "单体木桩" }}</div>
+    <div class="h-sub">bloodmallet 仿真 · 种族最优DPS{% if skipped %} · {{ skipped }} 个专精数据源暂无数据{% endif %}</div>
+  </div>
+  <div class="rows">
+    {% for r in rows %}
+    {% set cc = CLS.get(r.class, "#ECEDF2") %}
+    <div class="row">
+      <div class="r-rank {% if loop.index == 1 %}r-gold{% elif loop.index == 2 %}r-silver{% elif loop.index == 3 %}r-bronze{% else %}r-plain{% endif %}">{{ loop.index }}</div>
+      <div class="r-spec" style="color: {{ cc }};">{{ r.cn_name }}</div>
+      <div class="r-bar"><div class="r-fill" style="width: {{ [r.pct, 100]|min }}%; background: linear-gradient(90deg, {{ cc }}aa, {{ cc }});"></div></div>
+      <div class="r-dps">{{ "%.0f"|format(r.dps) }}</div>
+      <div class="r-pct">{{ "%.1f"|format(r.pct) }}%</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="foot">数据来源 Bloodmallet  ·  仅供参考，实战请以 WCL 为准</div>
+  <div class="foot-low">强度榜 [aoe] · 输出向专精</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 680px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 680px; background: #141519; }
+.band { height: 120px; position: relative; background: linear-gradient(90deg, #5a4a1a 0%, #3a331a 55%, #141519 100%); }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #FFC14D; }
+.h-title { position: absolute; left: 24px; top: 54px; transform: translateY(-50%); font-size: 34px; font-weight: 800; color: #fff; }
+.h-sub { position: absolute; left: 24px; top: 90px; transform: translateY(-50%); font-size: 15px; color: rgba(255,255,255,.62); }
+.rows { padding: 2px 0 4px; }
+.row { display: flex; align-items: center; height: 52px; padding: 0 14px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.10); border-radius: 6px; }
+.row-err { display: flex; align-items: center; height: 52px; padding: 0 14px; }
+.row-err:nth-child(even) { }
+.mdash { width: 44px; text-align: center; font-size: 22px; font-weight: 800; color: #727482; flex-shrink: 0; }
+.rank { width: 44px; text-align: center; font-size: 24px; font-weight: 800; flex-shrink: 0; }
+.r-gold { color: #FFC14D; } .r-silver { color: #C8CDD7; }
+.r-bronze { color: #CDA06E; } .r-plain { color: #ECEDF2; }
+.main { flex: 1; min-width: 0; }
+.nick { font-size: 20px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nick .realm { font-size: 14px; color: #8D8F9C; font-weight: 500; }
+.char { font-size: 14px; color: #8D8F9C; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.char .src-wcl { color: #C9A227; }
+.errtxt { font-size: 14px; color: #E08A8A; }
+.right { text-align: right; flex-shrink: 0; margin-left: 14px; }
+.val { font-size: 24px; font-weight: 800; }
+.val-sub { font-size: 14px; color: #8D8F9C; margin-top: 2px; white-space: nowrap; }
+.foot { margin: 10px 20px 0; padding: 8px 0 12px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+{% set CLS = {
+  "战士": "#C69B6D", "圣骑士": "#F48CBA", "猎人": "#AAD372",
+  "潜行者": "#FFF468", "牧师": "#F5F5F5", "死亡骑士": "#C41E3A",
+  "萨满": "#0070DD", "法师": "#3FC7EB", "术士": "#8788EE",
+  "武僧": "#00FF98", "德鲁伊": "#FF7C0A", "恶魔猎手": "#A330C9",
+  "唤魔师": "#33937F"
+} %}
+<div class="root">
+  <div class="band">
+    <div class="band-top"></div>
+    <div class="h-title">魔兽榜单 · {% if mode == 'ilvl' %}装等{% else %}大秘境分数{% endif %}</div>
+    <div class="h-sub">显示 {{ rows|length }} 人 / 名单 {{ rows|length + (hidden or 0) }} 人{% if hidden %}  ·  已省略 {{ hidden }} 名 0 分角色{% endif %}</div>
+  </div>
+  <div class="rows">
+    {% for r in rows %}
+    {% if r.error %}
+    <div class="row-err">
+      <div class="mdash">—</div>
+      <div class="main"><div class="nick" style="color:#E08A8A;">{{ r.nickname }}</div><div class="char" style="color:#E08A8A;">{{ r.name }}〈{{ r.realm }}〉 · 查询失败</div></div>
+      <div class="right"><div class="val-sub" style="color:#E08A8A;">{{ r.error }}</div></div>
+    </div>
+    {% else %}
+    {% set cc = CLS.get(r.class, "#B4B6BE") %}
+    <div class="row">
+      <div class="rank {% if loop.index == 1 %}r-gold{% elif loop.index == 2 %}r-silver{% elif loop.index == 3 %}r-bronze{% else %}r-plain{% endif %}">{{ loop.index }}</div>
+      <div class="main">
+        <div class="nick" style="color: {{ cc }};">{{ r.nickname }}<span class="realm">  {{ r.name }}〈{{ r.realm }}〉</span></div>
+        <div class="char">{% if r.source == 'wcl' %}<span class="src-wcl">WCL</span>{% endif %}{% if (r.rank_region or 0) > 0 %}世界 #{{ "{:,}".format(r.rank_world|int) }} · 国服 #{{ "{:,}".format(r.rank_region|int) }}{% endif %}{% if r.class %}{% if (r.rank_region or 0) > 0 or r.source == 'wcl' %} · {% endif %}{{ r.class }} {{ r.spec }}{% endif %}</div>
+      </div>
+      <div class="right">
+        {% if mode == 'ilvl' %}
+        <div class="val">{{ "%.0f"|format(r.ilvl) }}</div>
+        <div class="val-sub">{{ "%.0f"|format(r.score) }} 分</div>
+        {% else %}
+        <div class="val">{{ "%.0f"|format(r.score) }}</div>
+        <div class="val-sub">装等 {{ "%.0f"|format(r.ilvl) }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  <div class="foot">数据来源 Raider.IO / Warcraft Logs · 榜单 装等/刷新 · 周报 · 查卡 &lt;群友名&gt;</div>
+</div>
+</body>
+</html>

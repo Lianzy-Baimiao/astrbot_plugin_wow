@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body {
+  width: 860px;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  color: #ECEDF2; -webkit-font-smoothing: antialiased;
+}
+.root { width: 860px; background: #141519; padding-bottom: 10px; }
+.h-title { font-size: 30px; font-weight: 800; color: #fff; padding: 30px 24px 0; letter-spacing: 1px; }
+.h-sub { font-size: 14px; color: #A2A4B2; padding: 8px 24px 0; }
+.block-head {
+  display: flex; align-items: baseline; gap: 12px;
+  margin: 22px 24px 0; padding: 10px 16px;
+  background: rgba(255,255,255,.05); border-radius: 8px;
+}
+.block-name { font-size: 19px; font-weight: 800; color: #FFC14D; }
+.block-meta { font-size: 13px; color: #8D8F9C; }
+.th {
+  display: flex; align-items: center; margin: 14px 24px 0;
+  font-size: 14px; color: #8D8F9C; padding-bottom: 10px;
+  border-bottom: 1.5px solid rgba(255,255,255,.12);
+}
+.th-r { width: 40px; text-align: center; flex-shrink: 0; }
+.th-item { flex: 1; }
+.th-curve { width: 290px; flex-shrink: 0; text-align: center; }
+.th-dps { width: 120px; text-align: right; flex-shrink: 0; }
+.row { display: flex; align-items: center; height: 64px; margin: 0 24px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.04); border-radius: 6px; }
+.r-rank { width: 40px; text-align: center; font-size: 17px; font-weight: 800; flex-shrink: 0; }
+.r-gold { color: #FFC14D; } .r-silver { color: #C8CDD7; }
+.r-bronze { color: #CDA06E; } .r-plain { color: #ECEDF2; }
+.r-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding-right: 8px; }
+.r-icon {
+  width: 44px; height: 44px; border-radius: 9px; flex-shrink: 0;
+  background: #2A2C35 center/cover no-repeat;
+  border: 1.5px solid rgba(255,255,255,.14);
+}
+.r-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-sub { font-size: 12px; color: #8CB2F0; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-curve { width: 290px; flex-shrink: 0; }
+.r-dps { width: 120px; text-align: right; flex-shrink: 0; }
+.r-dps-num { font-size: 16px; font-weight: 800; }
+.r-dps-gain { font-size: 13px; font-weight: 700; margin-top: 1px; }
+.g-up { color: #86CF96; }
+.g-zero { color: #8D8F9C; }
+.foot {
+  margin: 12px 24px 0; padding-top: 10px; text-align: center;
+  border-top: 1px solid rgba(255,255,255,.05);
+  font-size: 12px; color: #727482;
+}
+.axis { font-size: 11px; color: #727482; text-align: center; }
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="h-title">饰品排行 · {{ spec }}</div>
+  <div class="h-sub">bloodmallet 仿真 · 单体 + 5 目标 · 基准 {{ st.ref_ilvl }}/{{ aoe5.ref_ilvl }} 装等（满级英雄）</div>
+
+  {% for block in [st, aoe5] %}
+  <div class="block-head">
+    <span class="block-name">{{ block.label }}</span>
+    <span class="block-meta">基准DPS {{ "%.0f"|format(block.base) }} · 曲线为各装等档位模拟 DPS</span>
+  </div>
+  <div class="th">
+    <div class="th-r">#</div>
+    <div class="th-item">饰品</div>
+    <div class="th-curve">多装等 DPS 曲线</div>
+    <div class="th-dps">DPS</div>
+  </div>
+  {% set all_vals = block.trinkets|selectattr('points')|map(attribute='points')|sum(start=[])|map(attribute=1)|list %}
+  {% set gmax = all_vals|max %}
+  {% set gmin = all_vals|min %}
+  {% set span = (gmax - gmin) if (gmax - gmin) > 1 else 1 %}
+  {% for t in block.trinkets %}
+  {% set pts = t.points %}
+  {% set n = pts|length %}
+  <div class="row">
+    <div class="r-rank {% if loop.index == 1 %}r-gold{% elif loop.index == 2 %}r-silver{% elif loop.index == 3 %}r-bronze{% else %}r-plain{% endif %}">{{ loop.index }}</div>
+    <div class="r-item">
+      <div class="r-icon" style="background-image: url('{{ t.icon_url }}');"></div>
+      <div>
+        <div class="r-name">{{ t.name }}</div>
+        <div class="r-sub">{{ t.source }}{% if t.ilvl %} · {{ t.ilvl }} 装等{% endif %}</div>
+      </div>
+    </div>
+    <div class="r-curve">
+      {% if n >= 2 %}
+      {% set w = 286 %}
+      {% set h = 42 %}
+      {% set pad = 6 %}
+      <svg width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}" preserveAspectRatio="none">
+        {% set poly = [] %}
+        {% for p in pts %}
+        {% set x = ((loop.index0 * (w - 2*pad) / (n - 1)) + pad)|round(1) %}
+        {% set y = (h - pad - ((p[1] - gmin) / span * (h - 2*pad)))|round(1) %}
+        {% set _ = poly.append(x ~ ',' ~ y) %}
+        {% endfor %}
+        <polyline points="{{ poly|join(' ') }}" fill="none" stroke="#C9A227" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="{{ poly|join(' ') }} {{ (w - pad) ~ ',' ~ (h - pad) }} {{ pad ~ ',' ~ (h - pad) }}" fill="#C9A227" opacity="0.10"/>
+      </svg>
+      <div class="axis">{{ pts[0][0] }} 装等 ────── {{ pts[-1][0] }} 装等</div>
+      {% else %}
+      <div class="axis" style="padding-top: 16px;">仅 {{ t.ilvl }} 装等数据</div>
+      {% endif %}
+    </div>
+    <div class="r-dps">
+      <div class="r-dps-num">{{ "%.0f"|format(t.dps) }}</div>
+      <div class="r-dps-gain {{ 'g-up' if t.pct >= 0 else 'g-zero' }}">{% if t.pct > 0 %}+{% endif %}{{ "%.2f"|format(t.pct) }}%</div>
+    </div>
+  </div>
+  {% endfor %}
+  {% endfor %}
+
+  <div class="foot">数据来源 Bloodmallet  ·  单体=castingpatchwerk 5目标=castingpatchwerk5  ·  仅供参考，实战请以 WCL 为准</div>
+</div>
+</body>
+</html>

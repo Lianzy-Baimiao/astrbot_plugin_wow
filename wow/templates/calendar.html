@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #141519; }
+body { width: 900px; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; color: #ECEDF2; -webkit-font-smoothing: antialiased; }
+.root { width: 900px; background: #141519; }
+.band { height: 96px; position: relative; background: linear-gradient(90deg, #b08a3a 0%, #6a5520 55%, #141519 100%); }
+.band-top { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #FFC14D; }
+.h-title { position: absolute; left: 28px; top: 44px; transform: translateY(-50%); font-size: 30px; font-weight: 800; color: #fff; }
+.h-sub { position: absolute; left: 28px; top: 74px; transform: translateY(-50%); font-size: 15px; color: rgba(255,255,255,.67); }
+.rows { padding: 4px 0 4px; }
+.row { display: flex; align-items: center; min-height: 58px; padding: 8px 24px 8px 12px; }
+.row:nth-child(odd) { background: rgba(255,255,255,.10); border-radius: 6px; }
+.sec {
+  width: 145px; flex-shrink: 0; font-size: 16px; font-weight: 800; color: #FFC14D;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;
+}
+.detail { flex: 1; font-size: 15px; line-height: 19px; color: #ECEDF2; padding: 0 14px 0 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.time { width: 110px; flex-shrink: 0; text-align: right; font-size: 14px; color: #8CB2F0; white-space: nowrap; }
+.foot { margin: 12px 24px 0; padding: 10px 0 14px; text-align: center; border-top: 1px solid rgba(255,255,255,.05); font-size: 12px; color: #727482; }
+</style>
+</head>
+<body>
+<div class="root">
+  <div class="band">
+    <div class="band-top"></div>
+    <div class="h-title">{{ expansion }} · 事件日历</div>
+    <div class="h-sub">数据来源 wow.kernel.moe{% if generated %} · 更新于 {{ generated }}{% endif %}</div>
+  </div>
+  <div class="rows">
+    {% for r in rows %}
+    <div class="row">
+      <div class="sec">{% if loop.first or rows[loop.index0 - 1].name != r.name %}{{ r.name }}{% endif %}</div>
+      <div class="detail">{{ r.detail }}</div>
+      <div class="time">{{ r.time }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="foot">wow.kernel.moe 事件时间表 · 繁转简展示</div>
+</div>
+</body>
+</html>

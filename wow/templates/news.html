@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #FFFFFF; }
+body {
+  width: 800px; padding: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  color: #1D2129; -webkit-font-smoothing: antialiased;
+}
+.page { background: #FFFFFF; border: 1px solid #E5E6EB; }
+.brand { display: flex; align-items: center; gap: 12px; padding: 18px 32px; background: #1F2A44; height: 57px; }
+.brand-tag { font-size: 15px; font-weight: 700; color: #FFC14D; letter-spacing: 2px; }
+.brand-name { font-size: 14px; color: rgba(255,255,255,.75); }
+.banner {
+  width: 100%; height: 280px; display: block; object-fit: cover; object-position: center;
+  background: linear-gradient(135deg, #1F2A44, #3A4B6E); /* 图片加载失败时兜底 */
+}
+.banner-empty { height: 180px; background: linear-gradient(135deg, #1F2A44, #3A4B6E); }
+.banner-empty .big { padding: 44px 32px 0; font-size: 26px; font-weight: 800; color: #FFFFFF; letter-spacing: 1px; line-height: 1.4; }
+.banner-empty .sub { padding: 12px 32px 0; font-size: 14px; color: rgba(255,255,255,.6); }
+.article { padding: 36px 32px 8px; }
+.art-title { font-size: 30px; font-weight: 800; color: #1D2129; line-height: 1.5; word-break: break-word; }
+.art-divider { height: 1px; background: #E5E6EB; margin: 24px 0; }
+.art-desc {
+  font-size: 16px; color: #4E5969; line-height: 1.9; white-space: pre-wrap; word-break: break-word;
+}
+.art-link {
+  margin: 26px 0 10px; font-size: 14px; color: #2F6FE4;
+  background: #F0F5FF; border-radius: 8px; padding: 12px 16px;
+  word-break: break-all; line-height: 1.6;
+}
+.foot { padding: 18px 32px 22px; font-size: 13px; color: #8A9099; text-align: right; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand">
+    <span class="brand-tag">魔兽世界官方新闻</span>
+    <span class="brand-name">wow.blizzard.cn</span>
+  </div>
+  {% if news.image_url %}
+  <img class="banner" src="{{ news.image_url }}">
+  <div class="article">
+    <div class="art-title">{{ news.title }}</div>
+    <div class="art-divider"></div>
+  </div>
+  {% else %}
+  <div class="banner banner-empty">
+    <div class="big">{{ news.title }}</div>
+    <div class="sub">魔兽世界 官方新闻公告</div>
+  </div>
+  {% endif %}
+  {% if news.description %}
+  <div style="padding: 0 32px;">
+    <div class="art-desc">{{ news.description }}</div>
+    <div class="art-divider"></div>
+  </div>
+  {% endif %}
+  {% if news.url %}
+  <div style="padding: 0 32px;">
+    <div class="art-link">原文链接：{{ news.url }}</div>
+  </div>
+  {% endif %}
+  <div class="foot">来源：wow.blizzard.cn · 最新官方新闻</div>
+</div>
+</body>
+</html>

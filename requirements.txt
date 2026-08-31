@@ -1,0 +1,3 @@
+httpx
+openpyxl
+playwright>=1.40
