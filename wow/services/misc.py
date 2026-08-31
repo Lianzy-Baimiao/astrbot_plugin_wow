@@ -5,15 +5,19 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import http.cookiejar
 import logging
 import random
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 
+from ..const import UA
 from ..data.delvers import day_number, get_menu
 from ..data.foods import pick_menu
 from ..data.quotes import pick_quote
 from ..data.talents import translate_talent_key
-from ..net import fetch_text
 from ..store import load_json, save_json
 
 logger = logging.getLogger("astrbot_plugin_wow.misc")
@@ -56,20 +60,83 @@ SPEC_LIST = {
 
 _TALENT_RE = re.compile(r"calc/blizzard/([A-Za-z0-9+/=]+)")
 _TALENT_RE2 = re.compile(r"([C][A-Za-z0-9+/=]{80,})")
+# 页面内嵌十几个 data:image/...;base64 图片，字符集跟天赋串一样，会被兜底正则
+# 误当成天赋码返回，搜兜底之前先剔掉。
+_DATA_URI_RE = re.compile(r"data:[^;'\"\s]+;base64,[A-Za-z0-9+/=]+")
+
+# Archon.gg 有两层拦截：Cloudflare 机器人检查，过了之后还有站点自建的
+# Human Verification 表单页（HTTP 200，所以 raise_for_status 发现不了）。
+# httpx 过不了第一层（403 "Just a moment..."），标准库 urllib 可以，所以这里
+# 不走 net.py 的共享客户端。第二层把页面里的隐藏字段原样 POST 回去就能过，
+# 响应体直接就是目标页面，拿到的 human_verified cookie 服务端给约 90 天。
+_CHALLENGE_URL = "https://www.archon.gg/human-challenge"
+_CHALLENGE_MARK = 'action="/human-challenge"'
+_INPUT_RE = re.compile(r"<input\b[^>]*>", re.I)
+_ATTR_RE = re.compile(r'(\w+)\s*=\s*"([^"]*)"')
+
+_archon_op: urllib.request.OpenerDirector | None = None
+
+
+def _archon_opener() -> urllib.request.OpenerDirector:
+    """带 CookieJar 的 opener（惰性创建）：human_verified cookie 在进程内复用，
+    重启后重新解一次门（多一个 POST，约 0.4 秒）。"""
+    global _archon_op
+    if _archon_op is None:
+        jar = http.cookiejar.CookieJar()
+        _archon_op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+        _archon_op.addheaders = [("User-Agent", UA)]
+    return _archon_op
+
+
+def _hidden_fields(page: str) -> dict[str, str]:
+    """取表单里的隐藏字段（不依赖属性顺序）。"""
+    out: dict[str, str] = {}
+    for tag in _INPUT_RE.findall(page):
+        attrs = dict(_ATTR_RE.findall(tag))
+        if attrs.get("type") == "hidden" and "name" in attrs:
+            out[attrs["name"]] = attrs.get("value", "")
+    return out
+
+
+def _archon_get_sync(url: str, timeout: float) -> str:
+    """GET 页面；撞上人机校验就提交表单，POST 的响应体即目标页面。阻塞，交给线程池跑。"""
+    op = _archon_opener()
+    page = op.open(url, timeout=timeout).read().decode("utf-8", "replace")
+    if _CHALLENGE_MARK not in page:
+        return page
+    fields = _hidden_fields(page)
+    if "signature" not in fields:
+        logger.warning("Archon.gg 人机校验表单字段变了，无法自动通过：%s", sorted(fields))
+        return ""
+    req = urllib.request.Request(
+        _CHALLENGE_URL,
+        data=urllib.parse.urlencode(fields).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded", "Referer": url},
+    )
+    return op.open(req, timeout=timeout).read().decode("utf-8", "replace")
 
 
 async def _fetch_archon_talent(url: str) -> str:
     try:
-        page = await fetch_text(url, timeout=15)
+        page = await asyncio.to_thread(_archon_get_sync, url, 15.0)
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            logger.warning("Archon.gg 被 Cloudflare 拦截（403，未过机器人检查）：%s", url)
+        else:
+            logger.warning("Archon.gg 抓取失败 %s: HTTP %s", url, e.code)
+        return ""
     except Exception as e:  # noqa: BLE001
         logger.warning("Archon.gg 抓取失败 %s: %s", url, e)
         return ""
     m = _TALENT_RE.search(page)
     if m:
         return m.group(1)
-    m2 = _TALENT_RE2.search(page)
+    m2 = _TALENT_RE2.search(_DATA_URI_RE.sub("", page))
     if m2:
+        logger.info("Archon.gg 页面无 calc/blizzard/，改用兜底正则：%s", url)
         return m2.group(1)
+    if _CHALLENGE_MARK in page:
+        logger.warning("Archon.gg 人机校验未通过，仍停在校验页：%s", url)
     return ""
 
 
@@ -90,7 +157,7 @@ async def talent_info(key: str) -> str:
     mp_url = f"https://www.archon.gg/wow/builds/{slug}/mythic-plus/overview/10/all-dungeons/this-week"
     raid, mp = await _fetch_archon_talent(raid_url), await _fetch_archon_talent(mp_url)
     if not raid and not mp:
-        return f"{key} 天赋获取失败，Archon.gg 可能暂无数据"
+        return f"{key} 天赋获取失败：Archon.gg 没返回数据（暂无数据或被拦截，详见日志）"
     lines = [f"{key} 天赋推荐（Archon.gg）"]
     if raid:
         lines.append("团：" + raid)
