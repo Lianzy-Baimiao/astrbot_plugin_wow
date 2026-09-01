@@ -284,13 +284,18 @@ def _CLIP_NEWS(d: dict) -> None:
 
 
 def _CLIP_NGA(d: dict) -> dict:
+    # 与 nga.html（深色版）版式逐项对应：
+    # 头区 forum(30+20) + title(8+行*42) + meta(8+20)
+    # 楼层 margin22 + padding32 + 头26 + body margin10 + 行*27 + 图 margin12+高 + border2
+    # 页脚 margin16+10+1+17 + root padding-bottom 10
     posts = d.get("posts") or []
-    title_lines = WowPlugin._measure_wrap_lines(d.get("title", ""), 720, 33)
-    h = 24 * 2 + 64 + 31 + title_lines * 48 + 31
+    title_lines = WowPlugin._measure_wrap_lines(d.get("title", ""), 784, 30)
+    h = 50 + 8 + title_lines * 42 + 28
     for p in posts:
-        body_lines = WowPlugin._measure_wrap_lines(p.get("content", ""), 720, 25)
+        body_lines = WowPlugin._measure_wrap_lines(p.get("content", ""), 752, 16)
         img_h = len(p.get("images") or []) * 860
-        h += 41 + 44 + body_lines * 44 + img_h + 12
+        h += 22 + 32 + 26 + 10 + body_lines * 27 + img_h + 2
+    h += 16 + 28 + 10
     return _clip(832, h)
 
 

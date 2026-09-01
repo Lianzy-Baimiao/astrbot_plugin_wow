@@ -4,53 +4,58 @@
 <meta charset="utf-8">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { background: #F2F3F5; }
+html, body { background: #141519; }
 body {
-  width: 832px; padding: 24px;
+  width: 832px;
   font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  color: #33383F; -webkit-font-smoothing: antialiased;
+  color: #ECEDF2; -webkit-font-smoothing: antialiased;
 }
-.panel {
-  background: #FFFFFF; border-radius: 18px;
-  border: 1px solid #E5E6EB; padding: 32px;
+.root { width: 832px; background: #141519; padding-bottom: 10px; }
+.h-forum { font-size: 14px; color: #8CB2F0; padding: 30px 24px 0; }
+.h-title { font-size: 30px; font-weight: 800; color: #fff; padding: 8px 24px 0; letter-spacing: 1px; line-height: 1.4; }
+.h-meta { font-size: 14px; color: #A2A4B2; padding: 8px 24px 0; }
+.post {
+  margin: 22px 24px 0; padding: 16px;
+  background: rgba(255,255,255,.05); border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08);
 }
-.p-forum { font-size: 21px; color: #8A9099; line-height: 1.5; }
-.p-title { font-size: 33px; font-weight: 700; color: #1D2129; line-height: 1.44; margin-top: 2px; }
-.p-meta { font-size: 21px; color: #8A9099; line-height: 1.5; margin-top: 2px; }
-.rule { height: 1px; background: #EDEEF0; margin: 20px 0; }
-.fl { position: relative; }
-.fl-bar {
-  position: absolute; left: 0; top: 6px; bottom: 6px;
-  width: 4px; border-radius: 2px; background: #2F6FE4;
+.p-head { display: flex; align-items: center; gap: 12px; }
+.p-lou {
+  font-size: 15px; font-weight: 800; color: #FFC14D;
+  background: rgba(255,193,77,.14); padding: 3px 10px; border-radius: 6px;
+  flex-shrink: 0;
 }
-.fl-head { display: flex; align-items: baseline; gap: 12px; padding-left: 16px; }
-.fl-lou { font-size: 24px; font-weight: 700; color: #2F6FE4; line-height: 1.5; }
-.fl-author { font-size: 24px; font-weight: 700; color: #1D2129; line-height: 1.6; }
-.fl-date { font-size: 21px; color: #8A9099; line-height: 1.5; }
-.fl-body { margin-top: 6px; font-size: 25px; line-height: 1.7; color: #33383F; white-space: pre-wrap; word-break: break-word; }
-.fl-img { margin: 12px auto 0; max-width: 720px; display: block; border: 1px solid #E5E6EB; border-radius: 6px; }
+.p-lou-plain { color: #C8CDD7; background: rgba(255,255,255,.08); }
+.p-author { font-size: 16px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-date { font-size: 13px; color: #8D8F9C; margin-left: auto; flex-shrink: 0; }
+.p-body { margin-top: 10px; font-size: 16px; line-height: 1.7; color: #ECEDF2; white-space: pre-wrap; word-break: break-word; }
+.p-img { margin-top: 12px; max-width: 100%; display: block; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; }
+.foot {
+  margin: 16px 24px 0; padding-top: 10px; text-align: center;
+  border-top: 1px solid rgba(255,255,255,.05);
+  font-size: 12px; color: #727482;
+}
 </style>
 </head>
 <body>
-<div class="panel">
-  {% if forum %}<div class="p-forum">版块：{{ forum }}</div>{% endif %}
-  <div class="p-title">{{ title }}</div>
-  <div class="p-meta">共 {{ replies }} 条回复</div>
+<div class="root">
+  {% if forum %}<div class="h-forum">NGA · {{ forum }}</div>{% endif %}
+  <div class="h-title">{{ title }}</div>
+  <div class="h-meta">共 {{ replies }} 条回复</div>
   {% for p in posts %}
-  <div class="rule"></div>
-  <div class="fl">
-    <div class="fl-bar"></div>
-    <div class="fl-head">
-      <span class="fl-lou">{{ p.floor_label }}</span>
-      <span class="fl-author">{{ p.author }}</span>
-      {% if p.date %}<span class="fl-date">{{ p.date }}</span>{% endif %}
+  <div class="post">
+    <div class="p-head">
+      <span class="p-lou {% if p.floor != 0 %}p-lou-plain{% endif %}">{{ p.floor_label }}</span>
+      <span class="p-author">{{ p.author }}</span>
+      {% if p.date %}<span class="p-date">{{ p.date }}</span>{% endif %}
     </div>
-    {% if p.content %}<div class="fl-body">{{ p.content }}</div>{% endif %}
+    {% if p.content %}<div class="p-body">{{ p.content }}</div>{% endif %}
     {% for img in p.images %}
-    <img class="fl-img" src="{{ img }}" onerror="this.style.display='none'">
+    <img class="p-img" src="{{ img }}" onerror="this.style.display='none'">
     {% endfor %}
   </div>
   {% endfor %}
+  <div class="foot">数据来自 NGA 论坛 · ngabbs.com</div>
 </div>
 </body>
 </html>
