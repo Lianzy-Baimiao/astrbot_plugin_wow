@@ -152,7 +152,7 @@ T_TALENT = r"^(.+?)天赋$"
 T_PRICE = r"^物价(?:[\s:：]+(.+))?$"
 T_FORTUNE = r"^低保$"
 T_PUNISH = r"^处罚(?:[\s:：]+(.+))?$"
-T_PUNISH_SYNC = r"^处罚名单更新$"
+T_PUNISH_SYNC = r"^处罚名单更新[\s:：]*(强制|重建)?$"
 T_HELP = r"^魔兽帮助$"
 
 _RE_CACHE: dict[str, re.Pattern] = {}
@@ -186,7 +186,7 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 开箱 [数量] / 红手榜 [数量]
 语录 [BOSS名] / 吃什么 / 低保 / 物价 <物品1、物品2>
 处罚 <角色名> [服务器]        查询官方处罚名单（按赛季列出）
-处罚名单更新                  立刻从官网抓取新名单（需管理员）
+处罚名单更新 [强制]           抓取新名单；「强制」忽略已收录记录重抓（需管理员）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -1356,22 +1356,30 @@ class WowPlugin(Star):
 
     @filter.regex(T_PUNISH_SYNC)
     async def punish_sync_cmd(self, event: AstrMessageEvent):
-        '''处罚名单更新：立刻从官网扫一遍处罚公告并收录新名单（管理员）'''
+        '''处罚名单更新 [强制]：扫官网处罚公告收录新名单；带「强制」则忽略记录全量重抓（管理员）'''
         if not event.is_admin():
             yield event.plain_result("仅管理员可手动更新处罚名单")
             return
         if punishfeed_svc is None:
             yield event.plain_result("当前部署缺少 punishfeed 模块，无法自动抓取")
             return
-        yield event.plain_result("正在扫描官网处罚公告……大名单解析较慢，请稍候")
+        force = bool(self._cap(T_PUNISH_SYNC, event))
+        tip = "正在**强制**重抓官网处罚公告（忽略已收录记录）……" if force else \
+            "正在扫描官网处罚公告……"
+        yield event.plain_result(tip + "大名单解析较慢，请稍候")
         try:
+            done = await punishfeed_svc.sync_once(self._punish_dir(), force=force)
+        except TypeError:  # 旧版 punishfeed 无 force 参数（容错导入约定）
             done = await punishfeed_svc.sync_once(self._punish_dir())
         except Exception as e:  # noqa: BLE001
             logger.warning("处罚名单手动更新失败: %s", e)
             yield event.plain_result(f"抓取失败：{e}")
             return
         if not done:
-            yield event.plain_result("没有发现新名单，本地已是最新。")
+            yield event.plain_result(
+                "没有发现新名单，本地已是最新。\n"
+                "若确认官网有名单却没收录，发「处罚名单更新 强制」忽略已收录记录重抓一遍。"
+            )
             return
         yield event.plain_result(punishfeed_svc.report_text(done))
 

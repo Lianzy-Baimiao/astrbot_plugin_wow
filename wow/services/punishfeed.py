@@ -114,7 +114,15 @@ _KIND_TAGS = (
 )
 
 
-def _disambiguate(name: str, anchor: str, claimed: dict, base) -> str | None:
+def _existing_path(base, name: str):
+    """已归档到子目录的同名 xlsx 路径；没有则 None。force 重抓时原地覆盖，
+    不会在根目录再造一份重复文件。"""
+    for p in base.rglob(f"{name}.xlsx"):
+        return p
+    return None
+
+
+def _disambiguate(name: str, anchor: str, claimed: dict, base, force: bool = False) -> str | None:
     """同名冲突时，按按钮文案里的玩法词给类别段加后缀。
 
     `20260901_至暗之夜第一赛季_PVE_处罚名单`
@@ -128,7 +136,9 @@ def _disambiguate(name: str, anchor: str, claimed: dict, base) -> str | None:
     if not tag:
         return None
     alt = f"{parts[0]}_{parts[1]}_{parts[2]}{tag}_{parts[3]}"
-    if alt in claimed or any(base.rglob(f"{alt}.xlsx")):
+    if alt in claimed:
+        return None
+    if not force and any(base.rglob(f"{alt}.xlsx")):
         return None
     return alt
 
@@ -190,6 +200,43 @@ def _mark_seen(pdf_url: str, name: str, rows: int) -> None:
     save_json(_SEEN_FILE, data)
 
 
+def valid_seen(base) -> dict:
+    """账本里**可信**的记录（url -> 记录）。不可信的一律剔除以便重抓。
+
+    两种不可信，都是「账本说收录了，其实数据不在」：
+
+    1. 多条 url 指向同一个 file —— 说明发生过同名覆盖，只有最后写入的那份留在盘上，
+       其余数据已丢失。v1.1.8 抓「PvP/PvE 赛季奖励处罚公告」就是这样把 3179 行的
+       大秘境名单覆盖没了，而账本仍认为它已收录、导致永远跳过。**冲突各方全部作废。**
+    2. 记录里的 file 在磁盘上找不到（含子目录）—— 用户手动删过、换过目录，
+       或当初写盘后又被清理。
+
+    纯内存判断 + 一次目录列举，不读 xlsx 内容，每轮开销可忽略。
+    """
+    seen = _seen()
+    if not seen:
+        return {}
+    owners: dict[str, list[str]] = {}
+    for url, rec in seen.items():
+        owners.setdefault((rec or {}).get("file", ""), []).append(url)
+    on_disk = {p.stem for p in base.rglob("*.xlsx")} if base.is_dir() else set()
+
+    good: dict[str, dict] = {}
+    for url, rec in seen.items():
+        name = (rec or {}).get("file", "")
+        if not name:
+            continue
+        if len(owners.get(name, ())) > 1:
+            logger.warning("[punishfeed] 账本冲突（%d 条记录指向 %s），作废以便重抓",
+                           len(owners[name]), name)
+            continue
+        if name not in on_disk:
+            logger.warning("[punishfeed] 账本记的 %s 已不在磁盘上，作废以便重抓", name)
+            continue
+        good[url] = rec
+    return good
+
+
 def _write_xlsx(path, header: list[str], rows: list[list[str]]) -> None:
     from openpyxl import Workbook
 
@@ -229,11 +276,12 @@ def _convert_sync(pdf_bytes: bytes, dest, seed: set[str]) -> tuple[int, list[str
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-async def sync_once(base=None, max_articles: int = 8) -> list[dict]:
+async def sync_once(base=None, max_articles: int = 8, force: bool = False) -> list[dict]:
     """跑一轮抓取。返回本轮**新收录**的 [{file, rows, title, warns}]。
 
-    base 为名单目录（默认 plugin_data/punish）。已存在同名 xlsx（含子目录）或
-    pdf_url 记过账的直接跳过，所以可以放心每 N 分钟跑。
+    base 为名单目录（默认 plugin_data/punish）。目标 xlsx 已存在（含子目录）
+    或 pdf_url 在**可信**账本里的直接跳过，所以可以放心每 N 分钟跑。
+    force=True 时忽略账本、也忽略磁盘上的同名文件，全部重抓一遍（覆盖写）。
     """
     base = base or default_dir()
     try:
@@ -242,27 +290,27 @@ async def sync_once(base=None, max_articles: int = 8) -> list[dict]:
         logger.warning("[punishfeed] 扫新闻失败: %s", e)
         return []
 
-    seen = _seen()
+    seen = {} if force else valid_seen(base)
     todo = []
     claimed: dict[str, str] = {}  # name -> pdf_url，防同一轮内两份名单撞同名
     for c in cands:
         name = target_name(c["meta"])
         # rglob：用户可能把名单归档进子目录，别重复下载
-        if any(base.rglob(f"{name}.xlsx")):
+        if not force and any(base.rglob(f"{name}.xlsx")):
             continue
         if c["pdf_url"] in seen:
             continue
         if name in claimed:
             # 一条公告挂多份名单且类别判成了同一个（如「史诗钥石地下城」+「PVP」都
             # 落到 PVP）。绝不能让后者覆盖前者，用按钮文案加后缀区分。
-            alt = _disambiguate(name, c["anchor"], claimed, base)
+            alt = _disambiguate(name, c["anchor"], claimed, base, force=force)
             if alt is None:
                 logger.warning("[punishfeed] 命名冲突且无法区分，跳过：%s ← %s | %s",
                                name, c["anchor"], c["pdf_url"])
                 continue
             name = alt
         claimed[name] = c["pdf_url"]
-        todo.append((c, name, base / f"{name}.xlsx"))
+        todo.append((c, name, _existing_path(base, name) or base / f"{name}.xlsx"))
     if not todo:
         return []
 
