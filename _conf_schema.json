@@ -47,5 +47,23 @@
     "type": "string",
     "default": "",
     "hint": "留空时使用插件数据目录下的 punish/ 子目录（data/plugin_data/astrbot_plugin_wow/punish/），把 pdf 转换出的 xlsx 放进去即可"
+  },
+  "punish_auto_fetch": {
+    "description": "自动抓取处罚名单（扫暴雪新闻 → 下载名单 PDF → 转 xlsx）",
+    "type": "bool",
+    "default": false,
+    "hint": "需要 pymupdf 依赖。开启后按下面的间隔自动检查，新名单落到 punish/ 目录并可立即用「处罚」查询"
+  },
+  "punish_fetch_interval": {
+    "description": "自动抓取的检查间隔（秒，最小 300）",
+    "type": "int",
+    "default": 3600,
+    "hint": "官方一周才发一次，1 小时（3600）足够；改小只是更快发现，不会更频繁下载（已收录的会跳过）"
+  },
+  "punish_notify_groups": {
+    "description": "收录到新处罚名单后通报的群（unified_msg_origin 或群号，可多个）",
+    "type": "list",
+    "default": [],
+    "hint": "留空则静默收录，不发群消息"
   }
 }

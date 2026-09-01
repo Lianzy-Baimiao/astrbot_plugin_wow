@@ -1,3 +1,4 @@
 httpx
 openpyxl
 playwright>=1.40
+pymupdf>=1.24

@@ -31,12 +31,23 @@
 | wowinfo | `事件` `事件 <版本>` `<版本>事件` `徽章` `大米成功率 [层数]` `大米排行榜` | 版本事件/限时率/专精排行（条形图，数值中文化；排行榜含**输出/防御/治疗**三段，列出当前全部专精，不写死行数） |
 | chishenme | `吃什么` `X天赋`（含 `鸟德天赋`/`DK天赋` 等 ~140 别名） `物价 a、b` `低保` | 娱乐与实用小工具 |
 | ngajiexi | 群内发送 NGA 帖子链接 | 自动生成帖子卡片 |
+| 处罚名单 | `处罚 <角色名> [服务器]` | 查官方处罚名单，按赛季分组列出命中记录（名单是脱敏名，**一个 `＊` 代表一个字**，`张＊丰` 才是「张三丰」、`张＊` 是两字名） |
+| 处罚名单 | `处罚名单更新` | 立刻扫官网处罚公告并收录新名单（需管理员）；也可开启定时自动抓取 |
+
+### 处罚名单的来源
+
+名单 xlsx 放在 `punish_xlsx_dir`（留空则为 `data/plugin_data/astrbot_plugin_wow/punish/`），
+**递归**扫描，可自行按赛季归档进子目录。文件名建议 `yyyymmdd_赛季名_PVE|PVP_处罚名单.xlsx`
+——插件从文件名反解日期/赛季/类别来组装回复，认不出时相应字段留空但仍可查询。
+
+开启 `punish_auto_fetch` 后，插件会定时扫暴雪新闻页，认出处罚公告、下载其中的名单 PDF、
+解析成 xlsx 落到上述目录，`处罚` 指令随即可查。已收录的会跳过，不会重复下载。
 
 ## 安装
 
 1. 将本目录复制到 AstrBot 的 `data/plugins/astrbot_plugin_wow`
 2. 在 AstrBot WebUI 插件页启用并重载插件
-3. 依赖自动安装：`httpx`、`openpyxl`、`playwright`（requirements.txt 声明，AstrBot 自动 pip 安装）
+3. 依赖自动安装：`httpx`、`openpyxl`、`playwright`、`pymupdf`（requirements.txt 声明，AstrBot 自动 pip 安装）
 4. **魔兽新闻网页截图**：Playwright 浏览器组件（约 150MB）在**首次使用 `/魔兽新闻` 时自动后台下载**，无需任何手动操作；下载完成前自动回退为新闻卡片。
 
 ## 配置（WebUI 插件配置页）
@@ -46,6 +57,8 @@
 - `news_groups` / `reset_groups` / `weekly_report_groups`：定时推送目标（unified_msg_origin，可通过群内发 `重置提醒 开` 自动记录本群）
 - `reset_time`：重置提醒推送时间（默认 06:50，周四）
 - `weekly_report_day`：周报推送日（1=周一…7=周日，默认周三 20:00）
+- `punish_xlsx_dir`：处罚名单 xlsx 目录（留空用插件数据目录下的 `punish/`）
+- `punish_auto_fetch` / `punish_fetch_interval` / `punish_notify_groups`：自动抓取处罚名单的开关（默认关）、检查间隔（默认 3600 秒，最小 300）、收录后的通报群
 
 ## 数据存储
 

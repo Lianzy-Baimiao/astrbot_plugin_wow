@@ -82,6 +82,11 @@ from wow.services import misc as misc_svc
 from wow.services import news as news_svc
 from wow.services import nga as nga_svc
 from wow.services import punish as punish_svc
+try:
+    from wow.services import punishfeed as punishfeed_svc
+except ImportError:  # 旧版部署缺 punishfeed 模块时不整插件挂掉（容错导入约定）
+    punishfeed_svc = None
+    logger.warning("未找到 wow.services.punishfeed，处罚名单自动抓取不可用")
 from wow.services import reset as reset_svc
 from wow.services import wclfmt
 from wow.store import close_stores, set_data_dir
@@ -147,6 +152,7 @@ T_TALENT = r"^(.+?)天赋$"
 T_PRICE = r"^物价(?:[\s:：]+(.+))?$"
 T_FORTUNE = r"^低保$"
 T_PUNISH = r"^处罚(?:[\s:：]+(.+))?$"
+T_PUNISH_SYNC = r"^处罚名单更新$"
 T_HELP = r"^魔兽帮助$"
 
 _RE_CACHE: dict[str, re.Pattern] = {}
@@ -179,7 +185,8 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 日历 [关键词] / 事件 / <版本>事件
 开箱 [数量] / 红手榜 [数量]
 语录 [BOSS名] / 吃什么 / 低保 / 物价 <物品1、物品2>
-处罚 <角色名> [服务器]        查询处罚名单（xlsx 表格）
+处罚 <角色名> [服务器]        查询官方处罚名单（按赛季列出）
+处罚名单更新                  立刻从官网抓取新名单（需管理员）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -393,6 +400,7 @@ class WowPlugin(Star):
         }.items()}
         self._scheduler_task: asyncio.Task | None = None
         self._last_news_check: float = 0
+        self._last_punish_check: float = 0
         self._fired: set[tuple] = set()
         logger.info(
             "魔兽世界插件初始化完成 | 插件根目录：%s | 模板目录存在：%s | 数据目录：%s",
@@ -417,6 +425,14 @@ class WowPlugin(Star):
         if not m or not m.groups():
             return ""
         return (m.group(1) or "").strip()
+
+    def _punish_dir(self) -> Path:
+        """名单目录：配置优先，留空用 plugin_data/punish。查询与自动抓取共用。"""
+        from wow.store import data_dir
+        cfg = str(self.config.get("punish_xlsx_dir", "") or "").strip()
+        base = Path(cfg) if cfg else data_dir() / "punish"
+        base.mkdir(parents=True, exist_ok=True)
+        return base
 
     def _limited(self, kind: str, key: str) -> bool:
         return self._limits[kind].ok(key)
@@ -1312,29 +1328,52 @@ class WowPlugin(Star):
         arg = self._cap(T_PUNISH, event)
         parts = arg.split()
         if not parts:
-            yield event.plain_result("用法：处罚 <角色名> [服务器]\n例：处罚 好*焼 / 处罚 好*焼 罗宁")
+            yield event.plain_result(
+                "用法：处罚 <角色名> [服务器]\n"
+                "例：处罚 张三丰 / 处罚 张三丰 白银之手\n"
+                "名单是脱敏名（一个＊代表一个字），也可直接按＊查：处罚 张＊丰"
+            )
             return
         name, realm = parts[0], None
         if len(parts) > 1:
             realm = " ".join(parts[1:])
         try:
-            from wow.store import data_dir
-            cfg = str(self.config.get("punish_xlsx_dir", "") or "").strip()
-            base = Path(cfg) if cfg else data_dir() / "punish"
-            base.mkdir(parents=True, exist_ok=True)
-            hits = punish_svc.query(base, name, realm)
+            base = self._punish_dir()
+            # 首轮要读 38 万行 xlsx（约 10s），走线程避免卡住整个事件循环；
+            # 旧版 punish 模块没有 query_async，退回同步版（见容错导入约定）
+            q = getattr(punish_svc, "query_async", None)
+            hits = await q(base, name, realm) if q else punish_svc.query(base, name, realm)
         except Exception as e:  # noqa: BLE001
             logger.warning("处罚名单查询失败: %s", e)
             yield event.plain_result(f"处罚名单查询失败：{e}")
             return
         if not hits:
-            where = f"（服务器：{realm}）" if realm else ""
-            yield event.plain_result(f"未在处罚名单中找到：{name}{where}")
+            where = f"·{realm}" if realm else ""
+            safe = getattr(punish_svc, "safe_name", lambda s: s)
+            yield event.plain_result(f"「{safe(name)}{where}」不在处罚名单里，清白。")
             return
-        lines = [f"在处罚名单中找到 {len(hits)} 条："]
-        for h in hits:
-            lines.append(f"[{h['file']}] {h['name']} | {h['realm']}")
-        yield event.plain_result("\n".join(lines))
+        yield event.plain_result(punish_svc.format_hits(name, realm, hits))
+
+    @filter.regex(T_PUNISH_SYNC)
+    async def punish_sync_cmd(self, event: AstrMessageEvent):
+        '''处罚名单更新：立刻从官网扫一遍处罚公告并收录新名单（管理员）'''
+        if not event.is_admin():
+            yield event.plain_result("仅管理员可手动更新处罚名单")
+            return
+        if punishfeed_svc is None:
+            yield event.plain_result("当前部署缺少 punishfeed 模块，无法自动抓取")
+            return
+        yield event.plain_result("正在扫描官网处罚公告……大名单解析较慢，请稍候")
+        try:
+            done = await punishfeed_svc.sync_once(self._punish_dir())
+        except Exception as e:  # noqa: BLE001
+            logger.warning("处罚名单手动更新失败: %s", e)
+            yield event.plain_result(f"抓取失败：{e}")
+            return
+        if not done:
+            yield event.plain_result("没有发现新名单，本地已是最新。")
+            return
+        yield event.plain_result(punishfeed_svc.report_text(done))
 
     # ------------------------------------------------------------------
     # NGA 帖子（ngajiexi）
@@ -1438,6 +1477,24 @@ class WowPlugin(Star):
                             logger.warning("周报推送失败 %s: %s", umo, e)
             except Exception as e:  # noqa: BLE001
                 logger.warning("周报生成失败: %s", e)
+
+        # 处罚名单自动抓取（先于新闻块：新闻块内有 return，放后面会被跳过）
+        if punishfeed_svc is not None and bool(cfg.get("punish_auto_fetch", False)):
+            interval = max(300, int(cfg.get("punish_fetch_interval", 3600) or 3600))
+            if time.time() - self._last_punish_check > interval:
+                self._last_punish_check = time.time()
+                try:
+                    done = await punishfeed_svc.sync_once(self._punish_dir())
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("处罚名单自动抓取失败: %s", e)
+                    done = []
+                if done:
+                    text = punishfeed_svc.report_text(done)
+                    for umo in self._norm_umo_list("punish_notify_groups"):
+                        try:
+                            await self._send_text_to(umo, text)
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning("处罚名单通报失败 %s: %s", umo, e)
 
         # 新闻（每 5 分钟检查一次，有更新实时推送：网页截图 + 可点链接）
         news_groups = self._norm_umo_list("news_groups")  # 归一化：裸群号自动补全 umo
