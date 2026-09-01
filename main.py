@@ -277,10 +277,23 @@ def _CLIP_AFFIX(d: dict) -> dict:
     return _clip(720, h + 30)
 
 
-def _CLIP_NEWS(d: dict) -> None:
-    # 新闻卡片改为 full_page 自适应高度：body 宽 800 = t2i 端点视口宽度，
-    # 不裁剪、不估算，内容全量渲染，天然无白边。
-    return None
+def _CLIP_NEWS(d: dict) -> dict:
+    # 与 news.html（深色版）版式逐项对应：
+    # brand 57 + banner(图200/无图140) + article(24+标题行*40.6+分隔线33)
+    # + desc(行*30.4+33) + link 60.8 + foot 32.2 + page padding 12
+    # t2i 端点固定输出 800x720：内容不足 720 时底部会出现同色空带，需按内容裁剪
+    news = d.get("news") or {}
+    title_lines = WowPlugin._measure_wrap_lines(news.get("title", ""), 734, 28)
+    h = 57 + (200 if news.get("image_url") else 140)
+    if news.get("image_url"):
+        h += 24 + title_lines * 40.6 + 33
+    if news.get("description"):
+        desc_lines = WowPlugin._measure_wrap_lines(news.get("description", ""), 734, 16)
+        h += desc_lines * 30.4 + 33
+    if news.get("url"):
+        h += 60.8
+    h += 32.2 + 12
+    return _clip(800, min(h, 720))
 
 
 def _CLIP_NGA(d: dict) -> dict:
