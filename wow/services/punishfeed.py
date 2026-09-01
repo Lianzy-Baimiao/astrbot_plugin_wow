@@ -35,6 +35,10 @@ _TITLE_DATE = re.compile(r"(\d{1,2})月(\d{1,2})日")
 _SEASON = re.compile(r"[“\"']([^”\"']{2,12})[”\"']\s*第([一二三四五六七八九十\d]+)赛季")
 # PvE / PvP 归类
 _MODE = re.compile(r"pv([ep])", re.I)
+# 语义关键词：一条公告挂多份名单时，按钮文案往往不写 PvE/PvP，只写玩法
+# （如「史诗钥石地下城处罚名单」+「PVP处罚名单」），这时靠玩法词判类别。
+_PVE_HINT = re.compile(r"钥石|地下城|大秘境|团本|首领|头衔|副本|史诗难度")
+_PVP_HINT = re.compile(r"竞技场|评级战场|战场|排位|角斗士")
 
 _SEEN_FILE = "punish_feed_seen.json"
 
@@ -46,6 +50,34 @@ def _cn_num(s: str) -> str:
     return table.get(s, s)
 
 
+def _detect_mode(title: str, anchor_text: str) -> str:
+    """判 PVE / PVP。优先级从高到低：
+
+    1. 按钮文案里的 PvE/PvP 字样（最直接，如「PVP处罚名单」）
+    2. 按钮文案里的玩法词（如「史诗钥石地下城处罚名单」→ PVE）
+    3. 标题里的 PvE/PvP —— 但**标题同时出现两者时不可信**：
+       「第1赛季PvP/PvE赛季奖励处罚公告」这种一条挂两份名单，
+       只取第一个匹配会把大秘境名单也判成 PVP。
+    4. 标题里的玩法词
+    5. 兜底 PVE（历史上不带类别标记的周更名单都是 PVE）
+    """
+    m = _MODE.search(anchor_text)
+    if m:
+        return "PVE" if m.group(1).lower() == "e" else "PVP"
+    if _PVE_HINT.search(anchor_text):
+        return "PVE"
+    if _PVP_HINT.search(anchor_text):
+        return "PVP"
+    marks = {g.lower() for g in _MODE.findall(title)}
+    if len(marks) == 1:
+        return "PVE" if marks.pop() == "e" else "PVP"
+    if _PVE_HINT.search(title):
+        return "PVE"
+    if _PVP_HINT.search(title):
+        return "PVP"
+    return "PVE"
+
+
 def parse_meta(title: str, pdf_url: str, anchor_text: str = "") -> dict | None:
     """从公告标题 + 按钮文案 + PDF 直链推出 {date, season, mode}；缺日期返回 None。
 
@@ -53,7 +85,7 @@ def parse_meta(title: str, pdf_url: str, anchor_text: str = "") -> dict | None:
     不用按钮文案里的日期：8月6日那份公告的按钮写的是「8月5日PVE处罚名单」，
     按按钮命名会得到 20260805，与公告日 20260806 的归档口径不一致。
 
-    mode 反过来优先看**按钮**：上面那份标题里没有 PvE/PvP，只有按钮写了 PVE。
+    mode 见 _detect_mode：按钮优先于标题，玩法词可补按钮没写类别的情况。
     """
     url_m = _URL_DATE.search(pdf_url)
     date = url_m.group(1) if url_m else ""
@@ -66,14 +98,39 @@ def parse_meta(title: str, pdf_url: str, anchor_text: str = "") -> dict | None:
 
     sm = _SEASON.search(title)
     season = f"{sm.group(1)}第{_cn_num(sm.group(2))}赛季" if sm else "未知赛季"
-
-    mm = _MODE.search(anchor_text) or _MODE.search(title)
-    mode = "PVE" if not mm else ("PVE" if mm.group(1).lower() == "e" else "PVP")
-    return {"date": date, "season": season, "mode": mode}
+    return {"date": date, "season": season,
+            "mode": _detect_mode(title, anchor_text)}
 
 
 def target_name(meta: dict) -> str:
     return f"{meta['date']}_{meta['season']}_{meta['mode']}_处罚名单"
+
+
+# 按钮文案 -> 文件名里的类别后缀（用于一条公告挂多份名单时区分）
+_KIND_TAGS = (
+    ("钥石", "史诗钥石地下城"), ("地下城", "史诗钥石地下城"), ("大秘境", "大秘境"),
+    ("团本", "团本"), ("首领", "团本"), ("头衔", "头衔"),
+    ("竞技场", "竞技场"), ("评级战场", "评级战场"), ("战场", "战场"),
+)
+
+
+def _disambiguate(name: str, anchor: str, claimed: dict, base) -> str | None:
+    """同名冲突时，按按钮文案里的玩法词给类别段加后缀。
+
+    `20260901_至暗之夜第一赛季_PVE_处罚名单`
+      -> `20260901_至暗之夜第一赛季_PVE史诗钥石地下城_处罚名单`
+    仍冲突或找不到玩法词时返回 None（宁可跳过也不覆盖已有数据）。
+    """
+    parts = name.split("_")
+    if len(parts) != 4:
+        return None
+    tag = next((t for kw, t in _KIND_TAGS if kw in anchor), None)
+    if not tag:
+        return None
+    alt = f"{parts[0]}_{parts[1]}_{parts[2]}{tag}_{parts[3]}"
+    if alt in claimed or any(base.rglob(f"{alt}.xlsx")):
+        return None
+    return alt
 
 
 async def find_candidates(max_articles: int = 8) -> list[dict]:
@@ -187,15 +244,25 @@ async def sync_once(base=None, max_articles: int = 8) -> list[dict]:
 
     seen = _seen()
     todo = []
+    claimed: dict[str, str] = {}  # name -> pdf_url，防同一轮内两份名单撞同名
     for c in cands:
         name = target_name(c["meta"])
-        dest = base / f"{name}.xlsx"
         # rglob：用户可能把名单归档进子目录，别重复下载
-        if dest.exists() or any(base.rglob(f"{name}.xlsx")):
+        if any(base.rglob(f"{name}.xlsx")):
             continue
         if c["pdf_url"] in seen:
             continue
-        todo.append((c, name, dest))
+        if name in claimed:
+            # 一条公告挂多份名单且类别判成了同一个（如「史诗钥石地下城」+「PVP」都
+            # 落到 PVP）。绝不能让后者覆盖前者，用按钮文案加后缀区分。
+            alt = _disambiguate(name, c["anchor"], claimed, base)
+            if alt is None:
+                logger.warning("[punishfeed] 命名冲突且无法区分，跳过：%s ← %s | %s",
+                               name, c["anchor"], c["pdf_url"])
+                continue
+            name = alt
+        claimed[name] = c["pdf_url"]
+        todo.append((c, name, base / f"{name}.xlsx"))
     if not todo:
         return []
 
