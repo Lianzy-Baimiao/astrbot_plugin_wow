@@ -81,6 +81,7 @@ from wow.services import guild as guild_svc
 from wow.services import misc as misc_svc
 from wow.services import news as news_svc
 from wow.services import nga as nga_svc
+from wow.services import punish as punish_svc
 from wow.services import reset as reset_svc
 from wow.services import wclfmt
 from wow.store import close_stores, set_data_dir
@@ -145,6 +146,7 @@ T_EAT = r"^吃什么$"
 T_TALENT = r"^(.+?)天赋$"
 T_PRICE = r"^物价(?:[\s:：]+(.+))?$"
 T_FORTUNE = r"^低保$"
+T_PUNISH = r"^处罚(?:[\s:：]+(.+))?$"
 T_HELP = r"^魔兽帮助$"
 
 _RE_CACHE: dict[str, re.Pattern] = {}
@@ -177,6 +179,7 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 日历 [关键词] / 事件 / <版本>事件
 开箱 [数量] / 红手榜 [数量]
 语录 [BOSS名] / 吃什么 / 低保 / 物价 <物品1、物品2>
+处罚 <角色名> [服务器]        查询处罚名单（xlsx 表格）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -1299,6 +1302,39 @@ class WowPlugin(Star):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
         yield event.plain_result(misc_svc.daily_fortune(str(event.get_sender_id())))
+
+    @filter.regex(T_PUNISH)
+    async def punish_cmd(self, event: AstrMessageEvent):
+        '''处罚 <角色名> [服务器]：查询处罚名单 xlsx'''
+        if not self._limited("light", self._group_key(event)):
+            yield event.plain_result("查询太频繁，请稍后再试")
+            return
+        arg = self._cap(T_PUNISH, event)
+        parts = arg.split()
+        if not parts:
+            yield event.plain_result("用法：处罚 <角色名> [服务器]\n例：处罚 好*焼 / 处罚 好*焼 罗宁")
+            return
+        name, realm = parts[0], None
+        if len(parts) > 1:
+            realm = " ".join(parts[1:])
+        try:
+            from wow.store import data_dir
+            cfg = str(self.config.get("punish_xlsx_dir", "") or "").strip()
+            base = Path(cfg) if cfg else data_dir() / "punish"
+            base.mkdir(parents=True, exist_ok=True)
+            hits = punish_svc.query(base, name, realm)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("处罚名单查询失败: %s", e)
+            yield event.plain_result(f"处罚名单查询失败：{e}")
+            return
+        if not hits:
+            where = f"（服务器：{realm}）" if realm else ""
+            yield event.plain_result(f"未在处罚名单中找到：{name}{where}")
+            return
+        lines = [f"在处罚名单中找到 {len(hits)} 条："]
+        for h in hits:
+            lines.append(f"[{h['file']}] {h['name']} | {h['realm']}")
+        yield event.plain_result("\n".join(lines))
 
     # ------------------------------------------------------------------
     # NGA 帖子（ngajiexi）

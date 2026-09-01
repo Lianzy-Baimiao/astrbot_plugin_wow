@@ -41,5 +41,11 @@
     "description": "周报推送日（1=周一 ... 7=周日，建议周三，因周四重置），推送时间固定 20:00",
     "type": "int",
     "default": 3
+  },
+  "punish_xlsx_dir": {
+    "description": "处罚名单 xlsx 所在目录（「处罚」指令查询用）",
+    "type": "string",
+    "default": "",
+    "hint": "留空时使用插件数据目录下的 punish/ 子目录（data/plugin_data/astrbot_plugin_wow/punish/），把 pdf 转换出的 xlsx 放进去即可"
   }
 }
