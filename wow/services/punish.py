@@ -137,7 +137,7 @@ def query(punish_dir: Path, name: str, realm: str | None = None) -> list[dict]:
     """全目录扫描，返回命中记录（按公告日期倒序，最近的在前）。
 
     每条：{date, season, mode, name, realm, file}
-    name 可为完整名（张三丰）或脱敏名（张**丰）；realm 精确匹配。
+    name 可为完整名（张三丰）或脱敏名（张*丰）；realm 精确匹配。
     """
     if not punish_dir.is_dir():
         raise RuntimeError(f"处罚名单目录不存在：{punish_dir}")
