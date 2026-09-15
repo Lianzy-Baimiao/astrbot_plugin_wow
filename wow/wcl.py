@@ -34,6 +34,11 @@ PROFILE_QUERY = """query Character($name: String!, $realm: String!, $region: Str
 
 ZONES_QUERY = """query ActiveMythicZones { worldData { zones { id name frozen expansion { id name } } } }"""
 
+# 当前赛季全部大秘境副本（含未打的）：补「大秘境详情」全量清单用
+ZONE_ENCOUNTERS_QUERY = (
+    "query ZoneEncounters($id: Int!) { worldData { zone(id: $id) { encounters { id name } } } }"
+)
+
 _SLUG_CLEANER = re.compile(r"[^a-z0-9]+")
 
 _REALM_SLUGS = {
@@ -90,6 +95,8 @@ class Profile:
         self.rank_total = kw.get("rank_total", 0)
         self.rank_spec = kw.get("rank_spec", "")
         self.dungeons = kw.get("dungeons", [])
+        # 当前赛季全部副本英文名（含未打的）；由 fetch_character 从 zone 探测结果填入
+        self.season_dungeon_names: list[str] = kw.get("season_dungeon_names", []) or []
 
 
 class WCLClient:
@@ -103,7 +110,8 @@ class WCLClient:
         self._token_expire: float = 0
         self._zone_id = 0
         self._zone_name = ""
-        self._zone_at: float = 0
+        self._zone_at = 0
+        self._zone_dungeons: list[str] = []  # 当前赛季全部副本英文名（含未打的）
         self._profile_cache: dict[str, tuple[Profile, float]] = {}
 
     # ---- 凭证 ----
@@ -185,7 +193,23 @@ class WCLClient:
         zones.sort(key=lambda x: x[0])
         self._zone_id, self._zone_name = zones[-1]
         self._zone_at = now
+        # 顺带取该区域的全部副本清单（补「未打的副本」用）；失败不致命，退回空表
+        try:
+            zd = await self._graphql(ZONE_ENCOUNTERS_QUERY, {"id": self._zone_id})
+            self._zone_dungeons = [
+                e.get("name", "")
+                for e in (zd.get("worldData", {}).get("zone", {}) or {}).get("encounters") or []
+                if e.get("name")
+            ]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("获取赛季副本清单失败（不影响查询）：%s", e)
+            self._zone_dungeons = []
         return self._zone_id, self._zone_name
+
+    async def season_dungeons(self) -> list[str]:
+        """当前赛季全部副本英文名（含角色没打过的）。"""
+        await self.active_mythic_zone()
+        return list(self._zone_dungeons)
 
     async def fetch_character(self, name: str, realm: str, force_update: bool = False) -> Profile:
         slug = realm_slug(realm)
@@ -220,6 +244,7 @@ class WCLClient:
         )
         self._parse_game_data(ch.get("gameData"), p)
         self._parse_zone_rankings(ch.get("zoneRankings"), p)
+        p.season_dungeon_names = list(self._zone_dungeons)  # 赛季全量副本清单（含未打）
         self._profile_cache[cache_key] = (p, time.time())
         return p
 
@@ -264,6 +289,8 @@ class WCLClient:
                     "name": (r.get("encounter") or {}).get("name", ""),
                     "score": float(r.get("bestAmount", 0) or 0),
                     "total_kills": int(r.get("totalKills", 0) or 0),
+                    # bestRank.ilvl 在大秘境 zone 里装的是钥石层数（+N）
+                    "level": int((r.get("bestRank") or {}).get("ilvl", 0) or 0),
                     "spec": r.get("spec", ""),
                 }
             )
