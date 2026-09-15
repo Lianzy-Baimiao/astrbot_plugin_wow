@@ -7,10 +7,11 @@
 - [x] main.py：宠物 [详情] 指令、宠物推送 开/关/状态/测试（复用推送四件套）、定时器 16:05 检查、HELP_TEXT
 - [x] _conf_schema.json：pet_push_groups；README 指令表+原理+配置说明
 - [x] 测试：py_compile、AST 结构、正则 11 用例、窗口/解析/账本/翻译单测、实弹 query_text、模拟 BoB push_check、strip_markdown
-- [ ] 后台慢速抓全剩余任务中文名（wowhead 限流，多轮退避中；核心任务已全有，冷门可回退英文）
-- [ ] 打包 zip、git 提交推送、发 Release v1.1.16
+- [x] 任务中文名 56/58 经 wowhead 验证（49057/49058 限流未取到，暂用通行译名，后续对表）
+- [x] 打包 zip、git 提交推送、发 Release v1.1.16
 
 ## Review
 - 数据源只认 Active + end_timestamp 的宠物任务；CN region 返回全空，确认必须走 NA 预测。
 - 推送定时 16:05（非整点）：美服夏令时 15:00 UTC 重置 = 北京 23:00，16:05 时美服当天数据必然已刷新。
 - 名表新任务回退英文原名，不影响功能。
+- wowhead CN 抓名走重定向 URL slug，限流凶（约 15 连发后 403），间隔 6-10s + 多轮退避（60s~900s）可逐步拿全。
