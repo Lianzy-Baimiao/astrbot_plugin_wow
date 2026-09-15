@@ -11,9 +11,10 @@
 |---|---|---|
 | wcl | `wcl 角色名 服务器名` | WCL 大秘境战绩速查（Warcraft Logs GraphQL v2） |
 | charinfo | `角色 角色名 服务器名` | 魔兽角色卡（装等/评分/排名/最近大秘境/团本进度/16 装备槽） |
-| wowboard | `名单` `名单 添加 群友名 角色名 服务器` `名单 删除 编号` | 魔兽群名单管理 |
+| wowboard | `名单` `名单 添加 群友名 角色名 服务器` `名单 删除 编号` | 魔兽群名单管理（可配白名单，只对部分群开放） |
 | wowboard | `榜单 [装等] [详情] [刷新]` | 群内分数/装等榜（RIO 主源 + WCL 回退） |
 | wowboard | `周报` | 本周进步榜（对比上周快照） |
+| wowboard | `周报推送 开/关/状态/测试` | 本群开启后每周自动推送周报（测试=当场生成一份；开/关/测试需管理员） |
 | wowboard | `查卡 <群友名或角色名>` | 名单角色资料卡（子串匹配） |
 | wowguild | `公会 公会名 [服务器]` | 公会资料卡（团本进度/职业分布） |
 | wowguild | `团本排行 [难度] [团本]` | 团本进度排行 TOP20 |
@@ -33,6 +34,7 @@
 | ngajiexi | 群内发送 NGA 帖子链接 | 自动生成帖子卡片 |
 | 处罚名单 | `处罚 <角色名> [服务器]` | 查官方处罚名单，按赛季分组列出命中记录（名单是脱敏名，**一个 `＊` 代表一个字**，`张＊丰` 才是「张三丰」、`张＊` 是两字名） |
 | 处罚名单 | `处罚名单更新 [强制]` | 立刻扫官网处罚公告并收录新名单（需管理员）；也可开启定时自动抓取。带「强制」则忽略已收录记录全量重抓 |
+| 处罚名单 | `处罚通报推送 开/关/状态/测试` | 本群开启后收录到新处罚名单自动通报（开/关/测试需管理员） |
 
 ### 处罚名单的来源
 
@@ -61,9 +63,10 @@
 
 - `wcl_client_id` / `wcl_client_secret`：Warcraft Logs API 凭证（可选，也可放环境变量 `WCL_CLIENT_ID``WCL_CLIENT_SECRET` 或仓库根目录 `wcl_cred.json`）
 - `default_realm`：公会查询默认服务器（默认影之哀伤）
-- `news_groups` / `reset_groups` / `weekly_report_groups`：定时推送目标（unified_msg_origin，可通过群内发 `重置提醒 开` 自动记录本群）
+- `news_groups` / `reset_groups` / `weekly_report_groups` / `punish_notify_groups`：定时推送目标（unified_msg_origin 或群号）。也可在群内用命令开关本群推送：`魔兽新闻推送 开/关`、`重置提醒 开/关`、`周报推送 开/关`、`处罚通报推送 开/关`（命令自动记录本群，开/关需管理员）
 - `reset_time`：重置提醒推送时间（默认 06:50，周四）
 - `weekly_report_day`：周报推送日（1=周一…7=周日，默认周三 20:00）
+- `wowboard_whitelist`：wowboard 指令（名单/名单 添加/名单 删除/榜单/周报/查卡）白名单，填群号或 umo。**留空 = 不限制**；填了则只对名单内的群开放（私聊放行），未授权的群静默不响应
 - `punish_xlsx_dir`：处罚名单 xlsx 目录（留空用插件数据目录下的 `punish/`）
 - `punish_auto_fetch` / `punish_fetch_interval` / `punish_notify_groups`：自动抓取处罚名单的开关（默认关）、检查间隔（默认 3600 秒，最小 300）、收录后的通报群
 - `markdown_output` / `markdown_group_mode` / `markdown_groups`：文本回复是否使用 Markdown 格式（默认开）。生效范围 all=所有会话 / whitelist=仅名单内的群 / blacklist=名单内的群除外，名单填群号或 umo 均可，私聊随总开关。关闭或名单命中时自动剥掉 MD 语法按纯文本发送，图片卡片不受影响

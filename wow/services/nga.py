@@ -70,18 +70,19 @@ def match_link(text: str) -> tuple[str, str] | None:
 
 
 def convert_line(domain: str, tid: str) -> str:
-    """连接转化提示行（与原版 convertLine 一致）。"""
+    """连接转化提示行（与原版 convertLine 一致；链接标签用 URL，被剥语法也不丢地址）。"""
     if domain == "nga.178.com":
         return ""
-    return "连接转化: " + MIRROR_URL % tid + "\n"
+    return "连接转化: [{}]({})\n".format(MIRROR_URL % tid, MIRROR_URL % tid)
 
 
 def header_text(title: str, author: str, replies: int, tid: str) -> str:
-    """随图片一起发出的文字部分（与原版 header() 一致）。"""
+    """随图片一起发出的文字部分（与原版 header() 一致；链接标签用 URL，被剥语法也不丢地址）。"""
+    url = VIEW_URL % tid
     return (
-        f"【NGA】{title}\n"
-        f"作者：{author} | 回复：{replies}\n"
-        f"{VIEW_URL % tid}"
+        f"**【NGA】{title}**\n"
+        f"作者：{author} ｜ 回复：{replies}\n"
+        f"[{url}]({url})"
     )
 
 

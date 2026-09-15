@@ -42,6 +42,12 @@
     "type": "int",
     "default": 3
   },
+  "wowboard_whitelist": {
+    "description": "wowboard 指令白名单：名单/名单 添加/名单 删除/榜单/周报/查卡 只对名单内的群开放",
+    "type": "list",
+    "default": [],
+    "hint": "填 unified_msg_origin 或群号（可多个）。留空 = 不限制，所有会话可用；私聊不受限制。例：339466990 或 napcat:GroupMessage:339466990"
+  },
   "punish_xlsx_dir": {
     "description": "处罚名单 xlsx 所在目录（「处罚」指令查询用）",
     "type": "string",

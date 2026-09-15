@@ -130,6 +130,7 @@ T_ROSTER_ADD = r"^名单[\s]*添加[\s:：]*(.*)$"
 T_ROSTER_DEL = r"^名单[\s]*删除[\s:：]*(.*)$"
 T_BOARD = r"^榜单((?:[\s]*(?:装等|详情|刷新))*)[\s]*$"
 T_WEEKLY = r"^周报$"
+T_WEEKLY_PUSH = r"^周报推送[\s:：]*(开|关|状态|测试)?$"
 T_CHAR_CARD = r"^查卡(?:[\s:：]+(.+))?$"
 T_NEWS_FORCE = r"^魔兽新闻$"
 T_NEWS = r"^魔兽新闻改$"
@@ -154,6 +155,7 @@ T_PRICE = r"^物价(?:[\s:：]+(.+))?$"
 T_FORTUNE = r"^低保$"
 T_PUNISH = r"^处罚(?:[\s:：]+(.+))?$"
 T_PUNISH_SYNC = r"^处罚名单更新[\s:：]*(强制|重建)?$"
+T_PUNISH_NOTIFY = r"^处罚通报推送[\s:：]*(开|关|状态|测试)?$"
 T_HELP = r"^魔兽帮助$"
 
 _RE_CACHE: dict[str, re.Pattern] = {}
@@ -180,6 +182,7 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 名单 / 名单 添加 <群友名> <角色名> <服务器> / 名单 删除 <编号>
 榜单 [装等] [详情] [刷新]    刷新需管理员
 周报 / 查卡 <群友名或角色名>
+周报推送 开/关/状态/测试     开/关/测试需管理员
 **—— 资讯 / 娱乐 ——**
 魔兽新闻 / 魔兽新闻改
 魔兽新闻推送 开/关/状态/测试   每5分钟检查，有更新自动推送本群（开/关/测试需管理员）
@@ -188,6 +191,7 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 语录 [BOSS名] / 吃什么 / 低保 / 物价 <物品1、物品2>
 处罚 <角色名> [服务器]        查询官方处罚名单（按赛季列出）
 处罚名单更新 [强制]           抓取新名单；「强制」忽略已收录记录重抓（需管理员）
+处罚通报推送 开/关/状态/测试  收录到新名单自动通报本群（开/关/测试需管理员）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -204,8 +208,17 @@ _MD_LINK = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
 
 
 def strip_markdown(text: str) -> str:
-    """把本插件产出的 MD 语法剥成纯文本（链接展开成「文字：url」，信息不丢）。"""
-    text = _MD_LINK.sub(r"\1：\2", text)
+    """把本插件产出的 MD 语法剥成纯文本（信息不丢）。
+
+    链接 `[文字](url)` → `文字：url`；标签本身就是 URL 时只留一份（链接标签用 URL
+    写法时，剥完不应出现 `url：url` 重复）。
+    """
+
+    def _link(m: re.Match) -> str:
+        label, url = m.group(1), m.group(2)
+        return label if label == url else f"{label}：{url}"
+
+    text = _MD_LINK.sub(_link, text)
     text = _MD_BOLD.sub(r"\1", text)
     text = _MD_CODE.sub(r"\1", text)
     return text
@@ -458,6 +471,17 @@ class WowPlugin(Star):
     def _limited(self, kind: str, key: str) -> bool:
         return self._limits[kind].ok(key)
 
+    # ---- wowboard 指令白名单 ------------------------------------------
+    # wowboard_whitelist 留空 = 不限制；填了umo/群号 = 只放行名单内的群（私聊放行）。
+    # 未授权的群静默跳过（「名单」「周报」是裸词，回提示会误伤正常聊天）。
+    def wowboard_allowed(self, event: AstrMessageEvent) -> bool:
+        groups = self._norm_umo_list("wowboard_whitelist")
+        if not groups:
+            return True
+        if not self._group_id(event):  # 私聊放行
+            return True
+        return self._umo(event) in groups
+
     # ---- Markdown 输出开关 -------------------------------------------
     # markdown_output：总开关（默认开）
     # markdown_group_mode：all=所有会话 / whitelist=仅白名单群 / blacklist=黑名单群除外
@@ -640,6 +664,50 @@ class WowPlugin(Star):
         else:
             chain.file_image(url)
         await self.context.send_message(umo, chain)
+
+    # ---- 推送开关四件套（开/关/状态/测试）共用实现 --------------------
+    # 新闻 / 重置提醒 / 周报 / 处罚通报四组推送命令共用同一套开关逻辑，
+    # 差异只在文案（on/off/usage）与状态、测试的实现（status_fn / test_fn）。
+    async def _push_toggle_cmd(
+        self, event: AstrMessageEvent, arg: str, cfg_key: str, usage: str,
+        on_msg: str, off_msg: str, status_fn=None, test_fn=None,
+    ):
+        """status_fn(on: bool) -> str；test_fn(event) -> list[结果]，无则提示不支持测试。"""
+        if not self._group_id(event):
+            yield event.plain_result("该命令仅支持在群聊中使用")
+            return
+        groups = self._norm_umo_list(cfg_key)  # 顺带把裸群号归一成 umo
+        umo = self._umo(event)
+        if arg == "开":
+            if not self._is_admin(event):
+                yield event.plain_result("需要管理员权限")
+                return
+            if umo not in groups:
+                groups.append(umo)
+            self.config[cfg_key] = groups
+            self.config.save_config()
+            yield event.plain_result(on_msg)
+        elif arg == "关":
+            if not self._is_admin(event):
+                yield event.plain_result("需要管理员权限")
+                return
+            self.config[cfg_key] = [g for g in groups if g != umo]
+            self.config.save_config()
+            yield event.plain_result(off_msg)
+        elif arg == "状态":
+            on = umo in groups
+            yield event.plain_result(status_fn(on) if status_fn else ("已开启" if on else "已关闭"))
+        elif arg == "测试":
+            if not self._is_admin(event):
+                yield event.plain_result("需要管理员权限")
+                return
+            if test_fn is None:
+                yield event.plain_result("该推送暂不支持测试")
+                return
+            for r in await test_fn(event):
+                yield r
+        else:
+            yield event.plain_result(f"用法：{usage} 开 / 关 / 状态 / 测试")
 
     # ------------------------------------------------------------------
     # 帮助
@@ -881,6 +949,8 @@ class WowPlugin(Star):
     @filter.regex(T_ROSTER)
     async def roster_cmd(self, event: AstrMessageEvent):
         '''名单：查看预设名单'''
+        if not self.wowboard_allowed(event):
+            return
         roster = board_svc.get_board_store().list_roster()
         if not roster:
             yield event.plain_result("名单为空，请使用「名单 添加 <群友名> <角色名> <服务器>」添加")
@@ -892,6 +962,8 @@ class WowPlugin(Star):
     @filter.regex(T_ROSTER_ADD)
     async def roster_add_cmd(self, event: AstrMessageEvent):
         '''名单 添加 <群友名> <角色名> <服务器>（需管理员）'''
+        if not self.wowboard_allowed(event):
+            return
         if not self._is_admin(event):
             yield event.plain_result("需要管理员权限（AstrBot 全局管理员，可用 /sid 获取 ID 后添加）")
             return
@@ -911,6 +983,8 @@ class WowPlugin(Star):
     @filter.regex(T_ROSTER_DEL)
     async def roster_del_cmd(self, event: AstrMessageEvent):
         '''名单 删除 <编号>（需管理员）'''
+        if not self.wowboard_allowed(event):
+            return
         if not self._is_admin(event):
             yield event.plain_result("需要管理员权限（AstrBot 全局管理员，可用 /sid 获取 ID 后添加）")
             return
@@ -929,6 +1003,8 @@ class WowPlugin(Star):
     @filter.regex(T_BOARD)
     async def board_cmd(self, event: AstrMessageEvent):
         '''榜单 [装等] [详情] [刷新]（刷新需管理员）'''
+        if not self.wowboard_allowed(event):
+            return
         flags = self._cap(T_BOARD, event)
         mode = "ilvl" if "装等" in flags else "score"
         detail = "详情" in flags
@@ -962,6 +1038,8 @@ class WowPlugin(Star):
     @filter.regex(T_WEEKLY)
     async def weekly_cmd(self, event: AstrMessageEvent):
         '''周报：本周进步榜'''
+        if not self.wowboard_allowed(event):
+            return
         if not self._limited("heavy", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
@@ -976,9 +1054,57 @@ class WowPlugin(Star):
         url = await self._render("weekly.html", {"rows": report})
         yield event.image_result(url)
 
+    def _next_weekly_time(self) -> str:
+        """下次周报推送时刻（weekly_report_day 1=周一…7=周日，固定 20:00）。"""
+        import datetime as dt
+        try:
+            wday = int(self.config.get("weekly_report_day", 3) or 3)
+        except (TypeError, ValueError):
+            wday = 3
+        wday = min(7, max(1, wday))
+        now = dt.datetime.now()
+        days = (wday - 1 - now.weekday()) % 7
+        t = (now + dt.timedelta(days=days)).replace(hour=20, minute=0, second=0, microsecond=0)
+        if t <= now:
+            t += dt.timedelta(days=7)
+        return t.strftime("%m-%d（周" + "一二三四五六日"[wday - 1] + "）%H:%M")
+
+    @filter.regex(T_WEEKLY_PUSH)
+    async def weekly_push_cmd(self, event: AstrMessageEvent):
+        '''周报推送 开/关/状态/测试：本群开启后每周推送本周进步榜（开/关/测试需管理员）'''
+        def status(on: bool) -> str:
+            return (f"本群周报推送：{'已开启' if on else '已关闭'}\n"
+                    f"下次推送：{self._next_weekly_time()}")
+        async for r in self._push_toggle_cmd(
+            event, self._cap(T_WEEKLY_PUSH, event), "weekly_report_groups", "周报推送",
+            on_msg=f"已开启本群周报推送（{self._next_weekly_time()} 起生效，每周自动推送）",
+            off_msg="已关闭本群周报推送",
+            status_fn=status,
+            test_fn=lambda ev: self._weekly_test(ev),
+        ):
+            yield r
+
+    async def _weekly_test(self, event: AstrMessageEvent) -> list:
+        # 测试 = 当场生成一份周报（wowboard 数据，受白名单约束）
+        if not self.wowboard_allowed(event):
+            return [event.plain_result("本群不在 wowboard 白名单内，无法生成周报")]
+        out = []
+        try:
+            report = await board_svc.build_weekly_report()
+            if not report:
+                out.append(event.plain_result("名单为空，请先使用「名单 添加 <群友名> <角色名> <服务器>」添加"))
+                return out
+            url = await self._render("weekly.html", {"rows": report})
+            out.append(event.image_result(url))
+        except Exception as e:  # noqa: BLE001
+            out.append(event.plain_result(f"周报获取失败：{e}"))
+        return out
+
     @filter.regex(T_CHAR_CARD)
     async def char_card_cmd(self, event: AstrMessageEvent):
         '''查卡 <群友名或角色名>'''
+        if not self.wowboard_allowed(event):
+            return
         if not self._limited("default", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
@@ -1020,42 +1146,17 @@ class WowPlugin(Star):
     @filter.regex(T_NEWS_PUSH)
     async def news_push_cmd(self, event: AstrMessageEvent):
         '''魔兽新闻推送 开/关/状态/测试：本群开启后每 5 分钟检查，有更新自动推送卡片图+链接（开/关/测试需管理员）'''
-        arg = self._cap(T_NEWS_PUSH, event)
-        if not self._group_id(event):
-            yield event.plain_result("该命令仅支持在群聊中使用")
-            return
-        groups = list(self.config.get("news_groups", []) or [])
-        umo = self._umo(event)
-        if arg == "开":
-            if not self._is_admin(event):
-                yield event.plain_result("需要管理员权限")
-                return
-            if umo not in groups:
-                groups.append(umo)
-            self.config["news_groups"] = groups
-            self.config.save_config()
-            yield event.plain_result("已开启本群魔兽新闻自动推送（每 5 分钟检查一次，有更新实时推送）")
-        elif arg == "关":
-            if not self._is_admin(event):
-                yield event.plain_result("需要管理员权限")
-                return
-            self.config["news_groups"] = [g for g in groups if g != umo]
-            self.config.save_config()
-            yield event.plain_result("已关闭本群魔兽新闻自动推送")
-        elif arg == "状态":
-            on = umo in groups
-            yield event.plain_result(
+        async for r in self._push_toggle_cmd(
+            event, self._cap(T_NEWS_PUSH, event), "news_groups", "魔兽新闻推送",
+            on_msg="已开启本群魔兽新闻自动推送（每 5 分钟检查一次，有更新实时推送）",
+            off_msg="已关闭本群魔兽新闻自动推送",
+            status_fn=lambda on: (
                 f"本群魔兽新闻推送：{'已开启（每 5 分钟检查）' if on else '已关闭'}\n"
                 "开启后由机器人自动推送，无需手动查询"
-            )
-        elif arg == "测试":
-            if not self._is_admin(event):
-                yield event.plain_result("需要管理员权限")
-                return
-            for r in await self._send_news(event, force=True):
-                yield r
-        else:
-            yield event.plain_result("用法：魔兽新闻推送 开 / 关 / 状态 / 测试")
+            ),
+            test_fn=lambda ev: self._send_news(ev, force=True),
+        ):
+            yield r
 
     @filter.regex(T_NEWS_STATUS)
     async def news_status_cmd(self, event: AstrMessageEvent):
@@ -1081,11 +1182,15 @@ class WowPlugin(Star):
                 if force:
                     results.append(event.plain_result("暂时没有新闻"))
                 return results
-            # 与原 ZeroBot blizzardnews 一致的文本块（MD：标签加粗）
+            # 与原 ZeroBot blizzardnews 一致的文本块（MD：标签加粗、地址为可点击链接。
+            # 链接标签直接用 URL：QQ 官方 Bot 渲染成可点击链接；普通群若被
+            # markdown_killer 之类剥掉语法，剩下的标签恰好就是完整 URL，不丢地址）
+            url = news.get("url", "")
+            link = f"[{url}]({url})" if url else "暂无"
             text = (
                 f"**最新魔兽新闻**\n**标题**: {news['title']}\n"
                 f"**描述**: {news.get('description', '')}\n"
-                f"**地址**: {news.get('url', '')}"
+                f"**地址**: {link}"
             )
             results.append(self._md(event, text))
             # 优先 Playwright 截真实网页（原版样式）；组件未就绪/失败时回退卡片
@@ -1187,41 +1292,21 @@ class WowPlugin(Star):
     @filter.regex(T_RESET_REMIND)
     async def reset_remind_cmd(self, event: AstrMessageEvent):
         '''重置提醒 开/关/状态/测试（开/关/测试需管理员）'''
-        arg = self._cap(T_RESET_REMIND, event)
-        if not self._group_id(event):
-            yield event.plain_result("该命令仅支持在群聊中使用")
-            return
-        groups = list(self.config.get("reset_groups", []) or [])
-        umo = self._umo(event)
-        if arg == "开":
-            if not self._is_admin(event):
-                yield event.plain_result("需要管理员权限")
-                return
-            if umo not in groups:
-                groups.append(umo)
-            self.config["reset_groups"] = groups
-            self.config.save_config()
-            yield event.plain_result("已开启本群重置推送")
-        elif arg == "关":
-            if not self._is_admin(event):
-                yield event.plain_result("需要管理员权限")
-                return
-            self.config["reset_groups"] = [g for g in groups if g != umo]
-            self.config.save_config()
-            yield event.plain_result("已关闭本群重置推送")
-        elif arg == "状态":
-            on = umo in groups
+        def status(on: bool) -> str:
             next_t = reset_svc.next_push_time(str(self.config.get("reset_time", "06:50")))
-            yield event.plain_result(
-                f"本群推送：{'已开启' if on else '已关闭'}\n下次推送：{next_t.strftime('%m-%d %H:%M')}"
-            )
-        elif arg == "测试":
-            if not self._is_admin(event):
-                yield event.plain_result("需要管理员权限")
-                return
-            yield self._md(event, await reset_svc.remind_text())
-        else:
-            yield event.plain_result("用法：重置提醒 开 / 关 / 状态 / 测试")
+            return (f"本群重置提醒推送：{'已开启' if on else '已关闭'}\n"
+                    f"下次推送：{next_t.strftime('%m-%d %H:%M')}")
+        async for r in self._push_toggle_cmd(
+            event, self._cap(T_RESET_REMIND, event), "reset_groups", "重置提醒",
+            on_msg="已开启本群重置推送",
+            off_msg="已关闭本群重置推送",
+            status_fn=status,
+            test_fn=lambda ev: self._reset_test(ev),
+        ):
+            yield r
+
+    async def _reset_test(self, event: AstrMessageEvent) -> list:
+        return [self._md(event, await reset_svc.remind_text())]
 
     # ------------------------------------------------------------------
     # 地下堡（dixiabao）
@@ -1459,6 +1544,36 @@ class WowPlugin(Star):
             return
         yield self._md(event, punishfeed_svc.report_text(done))
 
+    @filter.regex(T_PUNISH_NOTIFY)
+    async def punish_notify_cmd(self, event: AstrMessageEvent):
+        '''处罚通报推送 开/关/状态/测试：本群开启后收录到新处罚名单自动通报（开/关/测试需管理员）'''
+        def status(on: bool) -> str:
+            auto = bool(self.config.get("punish_auto_fetch", False))
+            try:
+                interval = max(300, int(self.config.get("punish_fetch_interval", 3600) or 3600))
+            except (TypeError, ValueError):
+                interval = 3600
+            lines = [f"本群新处罚名单通报：{'已开启' if on else '已关闭'}"]
+            lines.append(f"自动抓取：{'已开启' if auto else '已关闭'}（检查间隔 {interval} 秒）")
+            if not auto:
+                lines.append("提示：自动抓取默认关闭，需在 WebUI 开启 punish_auto_fetch 才会自动收录并通报")
+            return "\n".join(lines)
+        async for r in self._push_toggle_cmd(
+            event, self._cap(T_PUNISH_NOTIFY, event), "punish_notify_groups", "处罚通报推送",
+            on_msg="已开启本群新处罚名单通报（收录到新名单后自动推送）",
+            off_msg="已关闭本群新处罚名单通报",
+            status_fn=status,
+            test_fn=lambda ev: self._punish_notify_test(ev),
+        ):
+            yield r
+
+    async def _punish_notify_test(self, event: AstrMessageEvent) -> list:
+        text = (
+            "**[测试]** 处罚通报推送链路验证 —— 收到这条说明本群可以收到新处罚名单通报。\n"
+            "正式通报在收录到新名单时自动发送；手动抓取可发「处罚名单更新」。"
+        )
+        return [self._md(event, text)]
+
     # ------------------------------------------------------------------
     # NGA 帖子（ngajiexi）
     # ------------------------------------------------------------------
@@ -1489,7 +1604,7 @@ class WowPlugin(Star):
                 "forum": topic["forum"], "title": topic["title"], "replies": topic["replies"],
                 "posts": topic["posts"],
             })
-            yield event.plain_result(prefix + header)
+            yield self._md(event, prefix + header)
             yield event.image_result(url)
         except Exception as e:  # noqa: BLE001
             logger.warning("NGA 解析失败: %s", e)
@@ -1527,7 +1642,7 @@ class WowPlugin(Star):
         cfg = self.config
 
         # 重置提醒（周四 HH:MM）
-        reset_groups = list(cfg.get("reset_groups", []) or [])
+        reset_groups = self._norm_umo_list("reset_groups")  # 归一：裸群号自动补全 umo
         if reset_groups and now.tm_wday == 3:
             h, m = reset_svc.parse_reset_time(str(cfg.get("reset_time", "06:50")))
             if now.tm_hour == h and now.tm_min == m and self._fire_once("reset", now):
@@ -1542,7 +1657,7 @@ class WowPlugin(Star):
                     logger.warning("重置提醒生成失败: %s", e)
 
         # 周报（weekly_report_day，1=周一 ... 7=周日，20:00）
-        weekly_groups = list(cfg.get("weekly_report_groups", []) or [])
+        weekly_groups = self._norm_umo_list("weekly_report_groups")  # 归一：裸群号自动补全 umo
         try:
             wday = int(cfg.get("weekly_report_day", 3) or 3)
         except (TypeError, ValueError):
@@ -1614,7 +1729,9 @@ class WowPlugin(Star):
                     card_url = await self._render("news.html", {"news": news_item})
             else:
                 card_url = await self._render("news.html", {"news": news_item})
-            text = f"**最新魔兽新闻**\n**标题**: {news_item['title']}\n**地址**: {news_item.get('url', '')}"
+            _url = news_item.get("url", "")
+            _link = f"[{_url}]({_url})" if _url else "暂无"
+            text = f"**最新魔兽新闻**\n**标题**: {news_item['title']}\n**地址**: {_link}"
             for umo in targets:
                 try:
                     if shot:

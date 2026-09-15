@@ -41,19 +41,24 @@ ZONE_ENCOUNTERS_QUERY = (
 
 _SLUG_CLEANER = re.compile(r"[^a-z0-9]+")
 
+# WCL 的 serverSlug 直接支持中文服务器名（2026-09 实测 23 个服务器 25 角色全命中，
+# 含 奥杜尔/伊森利恩/血色十字军 等）。保留少量英文别名映射供手输英文名的场景，
+# 中文名一律原样直传，不再依赖手工维护的英译表。
 _REALM_SLUGS = {
-    "白银之手": "silver-hand", "Silver Hand": "silver-hand",
-    "回音山": "echo-ridge", "Echo Ridge": "echo-ridge",
-    "金色平原": "golden-plains", "Golden Plains": "golden-plains",
-    "艾露恩": "elune", "Elune": "elune",
-    "亚雷戈斯": "arygos", "Arygos": "arygos",
-    "霜之哀伤": "frostmourne", "Frostmourne": "frostmourne",
-    "影之哀伤": "shadowmourne", "Shadowmourne": "shadowmourne",
-    "阿曼尼": "amani", "Amani": "amani",
-    "森金": "senjin", "Sen'jin": "senjin", "Senjin": "senjin",
-    "永恒之井": "well-of-eternity", "Well of Eternity": "well-of-eternity",
-    "苏拉玛": "suramar", "Suramar": "suramar",
-    "罗宁": "rhonin", "Rhonin": "rhonin",
+    "Silver Hand": "silver-hand",
+    "Echo Ridge": "echo-ridge",
+    "Golden Plains": "golden-plains",
+    "Elune": "elune",
+    "Arygos": "arygos",
+    "Frostmourne": "frostmourne",
+    "Shadowmourne": "shadowmourne",
+    "Amani": "amani",
+    "Sen'jin": "senjin",
+    "Senjin": "senjin",
+    "Well of Eternity": "well-of-eternity",
+    "Suramar": "suramar",
+    "Rhonin": "rhonin",
+    "Ulduar": "ulduar",
 }
 
 _CLASS_CN_EN = {
@@ -65,11 +70,18 @@ _CLASS_CN_EN = {
 
 
 def realm_slug(realm: str) -> str | None:
+    """服务器名 -> serverSlug。
+
+    中文名原样直传（WCL 支持中文 slug，实测 23 服 25 角色全命中）；
+    英文名先查别名表，其余按 slug 规则清洗。
+    """
     realm = realm.strip()
+    if not realm:
+        return None
+    if any(ord(c) > 127 for c in realm):  # 中文名直传
+        return realm
     if slug := _REALM_SLUGS.get(realm):
         return slug
-    if not realm or any(ord(c) > 127 for c in realm):
-        return None
     slug = _SLUG_CLEANER.sub("-", realm.lower()).strip("-")
     return slug or None
 
