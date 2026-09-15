@@ -72,6 +72,12 @@
     "default": [],
     "hint": "留空则静默收录，不发群消息"
   },
+  "pet_push_groups": {
+    "description": "重量级野兽预警推送的群（unified_msg_origin 或群号，可多个）",
+    "type": "list",
+    "default": [],
+    "hint": "每天 16:05 拉美服数据预测明天国服宠物世界任务，出现重量级野兽时推送（附国服可做时间区间）。也可在群内用「宠物推送 开/关」管理"
+  },
   "markdown_output": {
     "description": "文本回复使用 Markdown 格式（加粗/行内代码/链接）",
     "type": "bool",

@@ -1,18 +1,16 @@
-# tasks/todo.md — v1.1.12：纯文本 MD 化（带开关/黑白名单）+ 天赋X兼容
+# tasks/todo.md — v1.1.16：宠物对战世界任务预警（重量级野兽）
 
-- [x] 服务层 MD 化：wclfmt / reset / punish / punishfeed / kernel / misc(物价+地下堡)
-- [x] main.py：HELP_TEXT、roster、新闻文本块 MD 化
-- [x] 天赋兼容：T_TALENT_PREFIX 正则 + talent_prefix_cmd（7 用例验证）
-- [x] MD 开关：markdown_output（总开关，默认开）
-- [x] 群黑白名单：markdown_group_mode(all/whitelist/blacklist) + markdown_groups
-- [x] strip_markdown 剥离器：**加粗**/`代码`/[链接](url)→文字：url；全角＊不动；单*不吃
-- [x] 出口接线：11 处事件回复走 _md()；定时推送经 _send_text_to→_md_for_umo
-- [x] _conf_schema.json 加 3 项配置；README 补说明
-- [x] 验证：py_compile、strip 冒烟（天赋/处罚/帮助/边界）、判定矩阵 10 用例
-- [x] 打包 _pack_wow.py 校验、发 Release v1.1.12
+- [x] 数据源验证：todayinwow.com /api/wqs（NA+legion，每日 15:00 UTC 批次，Active+end_timestamp）
+- [x] 时区推算：美服批次北京 23:00 结束 → 国服次日 07:00–23:00 可做（16 小时窗口）
+- [x] wow/data/petquests.py：58 任务中文名表 + 区域/奖励/阵营翻译（wowhead CN 重定向抓取）
+- [x] wow/services/petwq.py：fetch_active_pets（10 分钟缓存）、cn_window、账本（petwq_bob_seen.json）、query_text、push_check
+- [x] main.py：宠物 [详情] 指令、宠物推送 开/关/状态/测试（复用推送四件套）、定时器 16:05 检查、HELP_TEXT
+- [x] _conf_schema.json：pet_push_groups；README 指令表+原理+配置说明
+- [x] 测试：py_compile、AST 结构、正则 11 用例、窗口/解析/账本/翻译单测、实弹 query_text、模拟 BoB push_check、strip_markdown
+- [ ] 后台慢速抓全剩余任务中文名（wowhead 限流，多轮退避中；核心任务已全有，冷门可回退英文）
+- [ ] 打包 zip、git 提交推送、发 Release v1.1.16
 
 ## Review
-- Git：本地与远端历史分叉（远端 v1.1.11 是重做的提交），rebase 冲突后改为
-  cherry-pick 到 origin/main 之上，metadata 冲突手选 v1.1.12。
-- 设计：服务层只产 MD 一种格式；关闭开关时在 main.py 出口统一剥 MD，
-  不往服务函数穿参、无双份分支。私聊随总开关，群聊受黑白名单控制。
+- 数据源只认 Active + end_timestamp 的宠物任务；CN region 返回全空，确认必须走 NA 预测。
+- 推送定时 16:05（非整点）：美服夏令时 15:00 UTC 重置 = 北京 23:00，16:05 时美服当天数据必然已刷新。
+- 名表新任务回退英文原名，不影响功能。
