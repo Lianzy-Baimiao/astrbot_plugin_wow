@@ -176,22 +176,25 @@ def safe_name(name: str) -> str:
 
 
 def format_hits(name: str, realm: str | None, hits: list[dict]) -> str:
-    """命中记录 -> 群消息文案（按赛季分组，日期从近到远）。"""
+    """命中记录 -> 群消息文案（Markdown，按赛季分组，日期从近到远）。
+
+    脱敏名必须走 safe_name：半角 * 换全角＊，否则 `王**悦` 的 ** 会被 MD 吃成加粗。
+    """
     where = f"·{realm}" if realm else ""
-    lines = [f"「{safe_name(name)}{where}」共查到 {len(hits)} 次处罚记录", ""]
+    lines = [f"**「{safe_name(name)}{where}」共查到 {len(hits)} 次处罚记录**", ""]
     shown = hits[:MAX_LINES]
     last_season = object()
     for h in shown:
         season = h["season"] or "未知赛季"
         if season != last_season:
-            lines.append(f"【{season}】")
+            lines.append(f"**{season}**")
             last_season = season
         mode = f"{h['mode']} " if h["mode"] else ""
         date = _pretty_date(h["date"]) if h["date"] else "日期不详"
-        lines.append(f"  · {date} {mode}名单：{safe_name(h['name'])}"
+        lines.append(f"- {date} {mode}名单：{safe_name(h['name'])}"
                      f"（{h['realm'] or '服务器未记录'}）")
     if len(hits) > len(shown):
-        lines.append(f"  …… 另有 {len(hits) - len(shown)} 条较早记录未列出")
+        lines.append(f"- …… 另有 {len(hits) - len(shown)} 条较早记录未列出")
     lines.append("")
     lines.append("名单为官方公示的脱敏名，同名玩家可能重复，仅供参考。")
     return "\n".join(lines)

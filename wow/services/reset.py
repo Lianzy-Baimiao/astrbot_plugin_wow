@@ -78,17 +78,17 @@ async def remind_text() -> str:
     """重置提醒文本：倒计时 + 本周词缀 + 低保提示。"""
     end = await reset_time()
     d = end - dt.datetime.now()
-    lines = ["⚔️ 魔兽周常提醒"]
+    lines = ["**⚔️ 魔兽周常提醒**"]
     if d.total_seconds() > 0:
         dh = int(d.total_seconds() // 3600)
         if dh >= 48:
-            lines.append(f"🕐 距重置还有 {dh // 24} 天 {dh % 24} 小时（{end.strftime('%m-%d %H:%M')} 重置）")
+            lines.append(f"🕐 **距重置**还有 {dh // 24} 天 {dh % 24} 小时（{end.strftime('%m-%d %H:%M')} 重置）")
         else:
-            lines.append(f"🕐 距重置还有约 {dh} 小时（{end.strftime('%m-%d %H:%M')} 重置）")
+            lines.append(f"🕐 **距重置**还有约 {dh} 小时（{end.strftime('%m-%d %H:%M')} 重置）")
     affixes = await fetch_affix_names()
     if affixes:
-        lines.append("📜 本周词缀：" + " / ".join(affixes))
-    lines.append("💠 低保提醒：打满 4 次 ≥10 层大秘境，或击败 1 次团本首领")
+        lines.append("📜 **本周词缀**：" + " / ".join(affixes))
+    lines.append("💠 **低保提醒**：打满 4 次 ≥10 层大秘境，或击败 1 次团本首领")
     return "\n".join(lines)
 
 

@@ -149,6 +149,7 @@ T_MPLUS_RATE = r"^大米成功率[\s:：]*(\d*)$"
 T_MPLUS_RANK = r"^大米排行榜$"
 T_EAT = r"^吃什么$"
 T_TALENT = r"^(.+?)天赋$"
+T_TALENT_PREFIX = r"^天赋[\s:：]*(.*)$"
 T_PRICE = r"^物价(?:[\s:：]+(.+))?$"
 T_FORTUNE = r"^低保$"
 T_PUNISH = r"^处罚(?:[\s:：]+(.+))?$"
@@ -158,28 +159,28 @@ T_HELP = r"^魔兽帮助$"
 _RE_CACHE: dict[str, re.Pattern] = {}
 
 HELP_TEXT = """魔兽世界插件指令（前缀 / 可省略）
-—— 角色 / 战绩 ——
+**—— 角色 / 战绩 ——**
 角色 <角色名> <服务器>      角色卡
 wcl <角色名> <服务器>       WCL 战绩
-—— 大秘境 ——
+**—— 大秘境 ——**
 词缀 / 本周词缀 / 下周词缀
 大米成功率 [层数]           限时率（默认 10 层）
 大米排行榜                  赛季专精排行（输出/防御/治疗）
 重置                        重置倒计时 + 本周词缀
 重置提醒 开/关/状态/测试     开/关/测试需管理员
-—— 装备 / 强度 ——
+**—— 装备 / 强度 ——**
 BIS <专精>                  饰品Top3 + 副属性 + 种族
 饰品排行 <专精>             Top15 饰品
 强度榜 [aoe]                专精强度榜
 地下堡饰品                  当日可获取饰品
-<专精>天赋                  如：火法天赋 / 鸟德天赋
-—— 公会 / 群榜 ——
+<专精>天赋 / 天赋<专精>      如：火法天赋 / 鸟德天赋 / 天赋火法
+**—— 公会 / 群榜 ——**
 公会 <公会名> [服务器]
 团本排行 [难度] [团本]
 名单 / 名单 添加 <群友名> <角色名> <服务器> / 名单 删除 <编号>
 榜单 [装等] [详情] [刷新]    刷新需管理员
 周报 / 查卡 <群友名或角色名>
-—— 资讯 / 娱乐 ——
+**—— 资讯 / 娱乐 ——**
 魔兽新闻 / 魔兽新闻改
 魔兽新闻推送 开/关/状态/测试   每5分钟检查，有更新自动推送本群（开/关/测试需管理员）
 日历 [关键词] / 事件 / <版本>事件
@@ -824,7 +825,7 @@ class WowPlugin(Star):
         if not roster:
             yield event.plain_result("名单为空，请使用「名单 添加 <群友名> <角色名> <服务器>」添加")
             return
-        lines = [f"名单（{len(roster)} 人）："]
+        lines = [f"**名单（{len(roster)} 人）**"]
         lines.extend(f"{r['id']}. {r['nickname']}（{r['char_name']}〈{r['realm']}〉）" for r in roster)
         yield event.plain_result("\n".join(lines))
 
@@ -1020,11 +1021,11 @@ class WowPlugin(Star):
                 if force:
                     results.append(event.plain_result("暂时没有新闻"))
                 return results
-            # 与原 ZeroBot blizzardnews 一致的文本块
+            # 与原 ZeroBot blizzardnews 一致的文本块（MD：标签加粗）
             text = (
-                f"最新魔兽新闻:\n标题: {news['title']}\n"
-                f"描述: {news.get('description', '')}\n"
-                f"地址: {news.get('url', '')}"
+                f"**最新魔兽新闻**\n**标题**: {news['title']}\n"
+                f"**描述**: {news.get('description', '')}\n"
+                f"**地址**: {news.get('url', '')}"
             )
             results.append(event.plain_result(text))
             # 优先 Playwright 截真实网页（原版样式）；组件未就绪/失败时回退卡片
@@ -1295,6 +1296,21 @@ class WowPlugin(Star):
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"天赋获取失败：{e}")
 
+    @filter.regex(T_TALENT_PREFIX)
+    async def talent_prefix_cmd(self, event: AstrMessageEvent):
+        '''天赋X：天赋火法 / 天赋 DK ...（与 X天赋 等价的兼容写法）'''
+        key = self._cap(T_TALENT_PREFIX, event)
+        # 免前缀触发：认不出职业/专精（含裸词「天赋」）就当普通聊天，静默放过
+        if not misc_svc.is_talent_key(key):
+            return
+        if not self._limited("light", self._group_key(event)):
+            yield event.plain_result("查询太频繁，请稍后再试")
+            return
+        try:
+            yield event.plain_result(await misc_svc.talent_info(key))
+        except Exception as e:  # noqa: BLE001
+            yield event.plain_result(f"天赋获取失败：{e}")
+
     @filter.regex(T_PRICE)
     async def price_cmd(self, event: AstrMessageEvent):
         '''物价 物品1、物品2：查询本地物价表'''
@@ -1538,7 +1554,7 @@ class WowPlugin(Star):
                     card_url = await self._render("news.html", {"news": news_item})
             else:
                 card_url = await self._render("news.html", {"news": news_item})
-            text = f"最新魔兽新闻:\n标题: {news_item['title']}\n地址: {news_item.get('url', '')}"
+            text = f"**最新魔兽新闻**\n**标题**: {news_item['title']}\n**地址**: {news_item.get('url', '')}"
             for umo in targets:
                 try:
                     if shot:

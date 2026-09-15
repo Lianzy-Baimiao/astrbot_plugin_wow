@@ -206,13 +206,13 @@ def _query_price_sync(items: list[str]) -> str:
         wb.close()
     if not out:
         return "未找到相关物品，请检查物品名"
-    lines = [f"查询 {len(items)} 种物品，结果如下："]
+    lines = [f"**查询 {len(items)} 种物品，结果如下**"]
     for name, price, ilvl, qty in out:
         try:
-            price_s = f"{float(price):,}"
+            price_s = f"`{float(price):,}`"
         except (TypeError, ValueError):
-            price_s = str(price) if price is not None else "?"
-        lines.append(f"{name}：{price_s} 金（装等 {ilvl or '?'}，数量 {qty or '?'}）")
+            price_s = f"`{price}`" if price is not None else "`?`"
+        lines.append(f"- {name}：{price_s} 金（装等 {ilvl or '?'}，数量 {qty or '?'}）")
     return "\n".join(lines)
 
 
@@ -252,7 +252,7 @@ def delver_menu() -> str:
     items = get_menu(now)
     local = dt.datetime.now()
     date_str = local.strftime("%Y年%m月%d日")
-    lines = [f"📅 {date_str}（周期第{day}天）可获取饰品："]
-    lines.extend(f"{i + 1}. {name}" for i, name in enumerate(items))
+    lines = [f"**📅 {date_str}（周期第{day}天）可获取饰品**"]
+    lines.extend(f"- {name}" for name in items)
     lines.append("提示：每5天为一个周期循环刷新")
     return "\n".join(lines)

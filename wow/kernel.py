@@ -137,11 +137,11 @@ async def fetch_event_card(index: int = 1) -> str:
     header_m = _HEADER_RE.search(card)
     header = _strip_tags(header_m.group(1)) if header_m else ""
 
-    lines = [header]
+    lines = [f"**{header}**"]
     if index == 1:
         lines.append("可输入 版本+事件，获取相应版本信息")
         if generated:
-            lines.append(f"页面生成时间: {generated}")
+            lines.append(f"**页面生成时间**: {generated}")
     for row in _ROW_RE.findall(card):
         tds = re.findall(r'(?s)<td>(.*?)</td>', row)
         if len(tds) < 2:
@@ -150,7 +150,7 @@ async def fetch_event_card(index: int = 1) -> str:
         title = _strip_tags(title_m.group(1)) if title_m else _strip_tags(tds[0])
         details = re.sub(r"\s+", " ", _strip_tags(tds[1]))
         if title:
-            lines.append(f"{title}\t{details}")
+            lines.append(f"- **{title}**：{details}")
     return "\n".join(lines)
 
 

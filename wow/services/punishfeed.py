@@ -336,14 +336,14 @@ async def sync_once(base=None, max_articles: int = 8, force: bool = False) -> li
 
 
 def report_text(done: list[dict]) -> str:
-    """新收录战报 -> 群消息。"""
+    """新收录战报 -> 群消息（Markdown）。"""
     if not done:
         return ""
-    lines = [f"已自动收录 {len(done)} 份处罚名单：", ""]
+    lines = [f"**已自动收录 {len(done)} 份处罚名单**", ""]
     for d in done:
         m = d["meta"]
         date = f"{m['date'][:4]}年{int(m['date'][4:6])}月{int(m['date'][6:])}日"
-        lines.append(f"  · {date} {m['mode']}（{m['season']}）{d['rows']} 条")
+        lines.append(f"- {date} {m['mode']}（{m['season']}）{d['rows']} 条")
     lines.append("")
     lines.append("现在可以直接查了，例：处罚 张三丰 白银之手")
     return "\n".join(lines)
