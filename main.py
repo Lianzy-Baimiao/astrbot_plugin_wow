@@ -191,6 +191,26 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 NGA 帖子链接直接发出来即可自动解析"""
 
 
+# ---------------------------------------------------------------------------
+# Markdown 输出开关（markdown_output / markdown_group_mode + 黑白名单）
+#
+# 服务层统一产 Markdown（唯一格式，避免双份分支）；关闭时在 main.py 出口
+# 把 MD 语法剥成纯文本：**加粗** -> 加粗、`代码` -> 代码、[文字](url) -> 文字：url。
+# 处罚名单的脱敏名已是全角＊，不会被这里的 ** 规则误伤。
+# ---------------------------------------------------------------------------
+_MD_BOLD = re.compile(r"\*\*([^*\n]+)\*\*")
+_MD_CODE = re.compile(r"`([^`\n]+)`")
+_MD_LINK = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
+
+
+def strip_markdown(text: str) -> str:
+    """把本插件产出的 MD 语法剥成纯文本（链接展开成「文字：url」，信息不丢）。"""
+    text = _MD_LINK.sub(r"\1：\2", text)
+    text = _MD_BOLD.sub(r"\1", text)
+    text = _MD_CODE.sub(r"\1", text)
+    return text
+
+
 def _clip(w: int, h: float, slack: int = 28) -> dict:
     """clip 构造：高度宁多勿少（多出部分与卡面同色）。"""
     return {"x": 0, "y": 0, "width": w, "height": int(h) + slack}
@@ -438,6 +458,32 @@ class WowPlugin(Star):
     def _limited(self, kind: str, key: str) -> bool:
         return self._limits[kind].ok(key)
 
+    # ---- Markdown 输出开关 -------------------------------------------
+    # markdown_output：总开关（默认开）
+    # markdown_group_mode：all=所有会话 / whitelist=仅白名单群 / blacklist=黑名单群除外
+    # 名单填 unified_msg_origin 或裸群号均可（走 _norm_umo 归一，私聊不受名单影响、随总开关）
+    def md_enabled(self, event: AstrMessageEvent) -> bool:
+        if not bool(self.config.get("markdown_output", True)):
+            return False
+        mode = str(self.config.get("markdown_group_mode", "all") or "all").strip().lower()
+        if mode == "all":
+            return True
+        gid = self._group_id(event)
+        if not gid:  # 私聊：没有群维度，随总开关
+            return True
+        groups = self._norm_umo_list("markdown_groups")
+        umo = self._umo(event)
+        # 名单里存的是归一化 umo，与当前会话比对即可
+        if mode == "whitelist":
+            return umo in groups
+        if mode == "blacklist":
+            return umo not in groups
+        return True
+
+    def _md(self, event: AstrMessageEvent, text: str):
+        """MD 开关出口：开启原样发（客户端渲染），关闭剥成纯文本。"""
+        return event.plain_result(text if self.md_enabled(event) else strip_markdown(text))
+
     def _group_key(self, event: AstrMessageEvent) -> str:
         try:
             return f"{event.get_platform_name()}:{event.get_session_id()}"
@@ -568,9 +614,23 @@ class WowPlugin(Star):
         """AstrBot 的管理员 = 全局 admins_id 名单（对应原版 SuperUser/Admin）。"""
         return event.is_admin()
 
+    def _md_for_umo(self, umo: str, text: str) -> str:
+        """定时推送版的 MD 出口：按推送目标群的黑白名单决定是否剥 MD。"""
+        if not bool(self.config.get("markdown_output", True)):
+            return strip_markdown(text)
+        mode = str(self.config.get("markdown_group_mode", "all") or "all").strip().lower()
+        if mode == "all":
+            return text
+        groups = self._norm_umo_list("markdown_groups")
+        if mode == "whitelist" and umo not in groups:
+            return strip_markdown(text)
+        if mode == "blacklist" and umo in groups:
+            return strip_markdown(text)
+        return text
+
     async def _send_text_to(self, umo: str, text: str) -> None:
         from astrbot.api.event import MessageChain
-        await self.context.send_message(umo, MessageChain().message(text))
+        await self.context.send_message(umo, MessageChain().message(self._md_for_umo(umo, text)))
 
     async def _send_img_to(self, umo: str, url: str) -> None:
         from astrbot.api.event import MessageChain
@@ -588,7 +648,7 @@ class WowPlugin(Star):
     @filter.regex(T_HELP)
     async def help_cmd(self, event: AstrMessageEvent):
         '''魔兽帮助：列出全部指令'''
-        yield event.plain_result(HELP_TEXT)
+        yield self._md(event, HELP_TEXT)
 
     # ------------------------------------------------------------------
     # wcl（WCL 战绩速查）
@@ -612,7 +672,7 @@ class WowPlugin(Star):
             profile = await asyncio.wait_for(
                 self._wcl.fetch_character(name, realm, force_update=True), timeout=90
             )
-            yield event.plain_result(wclfmt.format_profile(profile))
+            yield self._md(event, wclfmt.format_profile(profile))
         except asyncio.TimeoutError:
             yield event.plain_result("查询 Warcraft Logs 超时，请稍后再试")
         except Exception as e:  # noqa: BLE001
@@ -827,7 +887,7 @@ class WowPlugin(Star):
             return
         lines = [f"**名单（{len(roster)} 人）**"]
         lines.extend(f"{r['id']}. {r['nickname']}（{r['char_name']}〈{r['realm']}〉）" for r in roster)
-        yield event.plain_result("\n".join(lines))
+        yield self._md(event, "\n".join(lines))
 
     @filter.regex(T_ROSTER_ADD)
     async def roster_add_cmd(self, event: AstrMessageEvent):
@@ -1027,7 +1087,7 @@ class WowPlugin(Star):
                 f"**描述**: {news.get('description', '')}\n"
                 f"**地址**: {news.get('url', '')}"
             )
-            results.append(event.plain_result(text))
+            results.append(self._md(event, text))
             # 优先 Playwright 截真实网页（原版样式）；组件未就绪/失败时回退卡片
             shot = None
             if news.get("url"):
@@ -1120,7 +1180,7 @@ class WowPlugin(Star):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
         try:
-            yield event.plain_result(await reset_svc.remind_text())
+            yield self._md(event, await reset_svc.remind_text())
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"查询失败：{e}")
 
@@ -1159,7 +1219,7 @@ class WowPlugin(Star):
             if not self._is_admin(event):
                 yield event.plain_result("需要管理员权限")
                 return
-            yield event.plain_result(await reset_svc.remind_text())
+            yield self._md(event, await reset_svc.remind_text())
         else:
             yield event.plain_result("用法：重置提醒 开 / 关 / 状态 / 测试")
 
@@ -1173,7 +1233,7 @@ class WowPlugin(Star):
         if not self._limited("light", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
-        yield event.plain_result(misc_svc.delver_menu())
+        yield self._md(event, misc_svc.delver_menu())
 
     # ------------------------------------------------------------------
     # 事件 / 徽章 / 大米成功率 / 大米排行榜（wowinfo）
@@ -1213,7 +1273,7 @@ class WowPlugin(Star):
             return
         from wow.kernel import fetch_event_card
         try:
-            yield event.plain_result(await fetch_event_card(index))
+            yield self._md(event, await fetch_event_card(index))
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"获取失败：{e}")
 
@@ -1323,7 +1383,7 @@ class WowPlugin(Star):
             yield event.plain_result("用法：物价 丰饶药水、xxx")
             return
         try:
-            yield event.plain_result(await misc_svc.query_price(items))
+            yield self._md(event, await misc_svc.query_price(items))
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"物价查询失败：{e}")
 
@@ -1368,7 +1428,7 @@ class WowPlugin(Star):
             safe = getattr(punish_svc, "safe_name", lambda s: s)
             yield event.plain_result(f"「{safe(name)}{where}」不在处罚名单里，清白。")
             return
-        yield event.plain_result(punish_svc.format_hits(name, realm, hits))
+        yield self._md(event, punish_svc.format_hits(name, realm, hits))
 
     @filter.regex(T_PUNISH_SYNC)
     async def punish_sync_cmd(self, event: AstrMessageEvent):
@@ -1397,7 +1457,7 @@ class WowPlugin(Star):
                 "若确认官网有名单却没收录，发「处罚名单更新 强制」忽略已收录记录重抓一遍。"
             )
             return
-        yield event.plain_result(punishfeed_svc.report_text(done))
+        yield self._md(event, punishfeed_svc.report_text(done))
 
     # ------------------------------------------------------------------
     # NGA 帖子（ngajiexi）

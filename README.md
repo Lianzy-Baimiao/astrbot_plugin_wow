@@ -66,6 +66,7 @@
 - `weekly_report_day`：周报推送日（1=周一…7=周日，默认周三 20:00）
 - `punish_xlsx_dir`：处罚名单 xlsx 目录（留空用插件数据目录下的 `punish/`）
 - `punish_auto_fetch` / `punish_fetch_interval` / `punish_notify_groups`：自动抓取处罚名单的开关（默认关）、检查间隔（默认 3600 秒，最小 300）、收录后的通报群
+- `markdown_output` / `markdown_group_mode` / `markdown_groups`：文本回复是否使用 Markdown 格式（默认开）。生效范围 all=所有会话 / whitelist=仅名单内的群 / blacklist=名单内的群除外，名单填群号或 umo 均可，私聊随总开关。关闭或名单命中时自动剥掉 MD 语法按纯文本发送，图片卡片不受影响
 
 ## 数据存储
 

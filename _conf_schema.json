@@ -65,5 +65,23 @@
     "type": "list",
     "default": [],
     "hint": "留空则静默收录，不发群消息"
+  },
+  "markdown_output": {
+    "description": "文本回复使用 Markdown 格式（加粗/行内代码/链接）",
+    "type": "bool",
+    "default": true,
+    "hint": "关闭后所有文本回复自动剥掉 Markdown 语法，按纯文本发送（图片卡片不受影响）"
+  },
+  "markdown_group_mode": {
+    "description": "Markdown 生效范围",
+    "type": "string",
+    "default": "all",
+    "hint": "all=所有会话；whitelist=仅下方名单里的群；blacklist=名单里的群除外。私聊不受名单影响，随总开关"
+  },
+  "markdown_groups": {
+    "description": "Markdown 群黑白名单（配合上一项生效，unified_msg_origin 或群号，可多个）",
+    "type": "list",
+    "default": [],
+    "hint": "生效范围=all 时此名单不生效"
   }
 }
