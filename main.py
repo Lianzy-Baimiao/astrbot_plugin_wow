@@ -197,7 +197,7 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 处罚通报推送 开/关/状态/测试  收录到新名单自动通报本群（开/关/测试需管理员）
 **—— 宠物对战 ——**
 宠物                         国服宠物对战世界任务（今天 + 明天，附上次野兽时间）
-宠物推送 开/关/状态/测试      每天 12:05 预告明日批次（有重量级野兽加预警；开/关/测试需管理员）
+宠物推送 开/关/状态/测试      中午起轮询预告明日批次（有重量级野兽加预警；开/关/测试需管理员）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -1597,14 +1597,14 @@ class WowPlugin(Star):
 
     @filter.regex(T_PET_PUSH)
     async def pet_push_cmd(self, event: AstrMessageEvent):
-        '''宠物推送 开/关/状态/测试：每天 12:05 预告明日国服宠物任务（欧服切批后立取，有重量级野兽加预警；开/关/测试需管理员）'''
+        '''宠物推送 开/关/状态/测试：12:00 起每 5 分钟轮询欧服切批，拿到明日批次即推（有重量级野兽加预警；开/关/测试需管理员）'''
         def status(on: bool) -> str:
             return (f"本群宠物任务通报：{'已开启' if on else '已关闭'}\n"
-                    "每天 12:05 预告国服明天 07:00 开始的宠物对战世界任务"
-                    "（欧服数据源，切批后立取；附今天批次与上次野兽出现时间），有重量级野兽时加预警横幅")
+                    "12:00 起每 5 分钟检查欧服切批，拿到国服明天 07:00 开始的批次即推"
+                    "（附今天批次与上次野兽出现时间），有重量级野兽时加预警横幅")
         async for r in self._push_toggle_cmd(
             event, self._cap(T_PET_PUSH, event), "pet_push_groups", "宠物推送",
-            on_msg="已开启本群宠物任务通报（每天 12:05 预告明天批次，有重量级野兽加预警）",
+            on_msg="已开启本群宠物任务通报（中午起轮询，拿到明天批次即推；有重量级野兽加预警）",
             off_msg="已关闭本群宠物任务通报",
             status_fn=status,
             test_fn=lambda ev: self._pet_test(ev),
@@ -1724,22 +1724,28 @@ class WowPlugin(Star):
             except Exception as e:  # noqa: BLE001
                 logger.warning("周报生成失败: %s", e)
 
-        # 宠物对战世界任务通报（每天北京时间 12:05，欧服切批后立取明日批次）
-        # 欧服在北京 12:00 切批（比美服早 11 小时），与国服同批；
-        # 12:05 拉到的新 Active 批次 = 国服明天 07:00 开始的批次
+        # 宠物对战世界任务预告（欧服数据源，北京 12:00 切批）
+        # 源站放出新批有延迟（实测 12:20 仍未见到新批），所以 12:00 起每 5 分钟
+        # 轮询一次：拿到「国服明天 07:00 开始的批次」就推，当天只推一次（跨重启去重）。
         pet_groups = self._norm_umo_list("pet_push_groups")  # 归一：裸群号自动补全 umo
-        if pet_groups and now.tm_hour == 12 and now.tm_min == 5 and self._fire_once("petwq", now):
+        if (pet_groups and now.tm_hour >= 12 and now.tm_min % 5 == 0
+                and self._fire_once("petpoll", now)
+                and petwq_svc.pushed_day() != petwq_svc.today_str()):
+            text = None
             try:
-                text = await petwq_svc.push_text()
+                text = await petwq_svc.push_text(require_tomorrow=True)
             except Exception as e:  # noqa: BLE001
                 logger.warning("宠物任务通报生成失败: %s", e)
-                text = None
             if text:
                 for umo in pet_groups:
                     try:
                         await self._send_text_to(umo, text)
                     except Exception as e:  # noqa: BLE001
                         logger.warning("宠物任务通报推送失败 %s: %s", umo, e)
+                petwq_svc.mark_pushed(petwq_svc.today_str())
+                logger.info("宠物任务预告已推送（国服明天批次）")
+            else:
+                logger.info("宠物任务预告：源站尚未放出明日批次，5 分钟后再试")
 
         # 处罚名单自动抓取（先于新闻块：新闻块内有 return，放后面会被跳过）
         if punishfeed_svc is not None and bool(cfg.get("punish_auto_fetch", False)):

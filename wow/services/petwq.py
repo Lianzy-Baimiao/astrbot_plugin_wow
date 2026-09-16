@@ -49,6 +49,8 @@ _cache_bob_last: dt.datetime | None = None
 
 # 账本：记录重量级野兽每次出现的国服日期，用于「上次出现」展示
 _LEDGER = "petwq_bob_seen.json"
+# 推送状态：记录「哪天已推过明日预告」，避免轮询重复推送（跨重启保持）
+_PUSH_STATE = "petwq_push_day.json"
 # v1.1.16~v1.1.20 的旧模型把国服窗口算成 end+1 日，账本日期整体晚了一天。
 # 2026-09-16 定稿模型（窗口 = end 所在日 07:00）后，首次读到旧账本时平移回来。
 _LEDGER_OLD_MODEL_UNTIL = "2026-09-16"
@@ -86,7 +88,9 @@ def cn_window(end_cn: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
     return start, start + dt.timedelta(days=1)
 
 
-async def fetch_data(target_end_day: dt.date | None = None) -> tuple[list[dict], dt.datetime | None]:
+async def fetch_data(
+    target_end_day: dt.date | None = None, force: bool = False
+) -> tuple[list[dict], dt.datetime | None]:
     """拉取宠物任务 + 重量级野兽上次出现时刻（10 分钟缓存）。
 
     返回 (pets, bob_last)：bob_last 为野兽上次批次的美服结束时刻（国服时区），
@@ -101,7 +105,7 @@ async def fetch_data(target_end_day: dt.date | None = None) -> tuple[list[dict],
     import time
 
     now = time.time()
-    if _cache_all is not None and now - _cache_at < 600:
+    if not force and _cache_all is not None and now - _cache_at < 600:
         raw = _cache_all
     else:
         resp = await post_json(
@@ -176,6 +180,20 @@ def bob_last_text() -> str:
             return f"上次重量级野兽：{dates[-1]}（昨天）"
         return f"上次重量级野兽：{dates[-1]}（{days_ago} 天前）"
     return "上次重量级野兽：暂无记录"
+
+
+def today_str() -> str:
+    """国服今天的日期串（YYYY-MM-DD）。"""
+    return _now_cn().date().isoformat()
+
+
+def pushed_day() -> str:
+    """已推送明日预告的日期；未推过返回空串。"""
+    return str((load_json(_PUSH_STATE, {}) or {}).get("date", ""))
+
+
+def mark_pushed(day: str) -> None:
+    save_json(_PUSH_STATE, {"date": day})
 
 
 def _bob_last_seen() -> dict:
@@ -321,26 +339,28 @@ async def query_text() -> str:
     return text
 
 
-async def push_text() -> str | None:
-    """每日推送文案（12:05）：预告国服**明天**的批次（EU 刚切批）；有重量级野兽时加预警。
+async def push_text(require_tomorrow: bool = False) -> str | None:
+    """推送文案：预告国服**明天**的批次（附今天批次）；有重量级野兽时加预警。
 
-    EU 在北京 12:00 切批，新 Active = 国服明天 07:00 开始的批次——比旧美服源
-    （23:00 切批）提前 11 小时。文案同时带上今天批次（当日还剩约 19 小时）。
-    EU 偶发延迟翻页时退回 Active 兜底（至少推今天的批次）。
+    数据源（欧服）在北京 12:00 切批，但源站**放出新批有延迟**（实测 12:20 仍未
+    看到新批），所以定时任务从 12:00 起每 5 分钟轮询，本函数即轮询用的探针：
+    require_tomorrow=True 时，明天的批次还没就绪就返回 None（调用方稍后再试）。
     """
     try:
-        now = _now_cn()
-        today = now.date()
-        tomorrow = today + dt.timedelta(days=1)
-        tmr_pets, bob = await fetch_data(target_end_day=tomorrow)
-        if not tmr_pets:
-            tmr_pets = None  # EU 未翻页：只推今天
-        today_pets, _ = await fetch_data(target_end_day=today)
-        if not today_pets:
-            today_pets = None
+        # force=True：轮询必须看源站最新状态，不能被 10 分钟缓存挡住
+        today_pets, bob = await fetch_data(target_end_day=_now_cn().date(), force=True)
+        tmr_pets, _ = await fetch_data(
+            target_end_day=_now_cn().date() + dt.timedelta(days=1), force=True
+        )
     except Exception as e:  # noqa: BLE001
         logger.warning("[petwq] 拉取宠物任务失败: %s", e)
         return None
+    if not tmr_pets:
+        tmr_pets = None
+        if require_tomorrow:
+            return None  # 源站还没放出新批，等下一轮
+    if not today_pets:
+        today_pets = None
     if not today_pets and not tmr_pets:
         return None
     return build_text(today_pets, tmr_pets, bob)
