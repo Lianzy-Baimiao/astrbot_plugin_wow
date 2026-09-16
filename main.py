@@ -157,7 +157,7 @@ T_FORTUNE = r"^低保$"
 T_PUNISH = r"^处罚(?:[\s:：]+(.+))?$"
 T_PUNISH_SYNC = r"^处罚名单更新[\s:：]*(强制|重建)?$"
 T_PUNISH_NOTIFY = r"^处罚通报推送[\s:：]*(开|关|状态|测试)?$"
-T_PET = r"^宠物(?:[\s:：]+(详情))?$"
+T_PET = r"^宠物$"
 T_PET_PUSH = r"^宠物推送[\s:：]*(开|关|状态|测试)?$"
 T_HELP = r"^魔兽帮助$"
 
@@ -196,8 +196,8 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 处罚名单更新 [强制]           抓取新名单；「强制」忽略已收录记录重抓（需管理员）
 处罚通报推送 开/关/状态/测试  收录到新名单自动通报本群（开/关/测试需管理员）
 **—— 宠物对战 ——**
-宠物 [详情]                  国服今天宠物对战世界任务（附可做时间区间 + 上次野兽时间）
-宠物推送 开/关/状态/测试      每日通报当天批次（有重量级野兽加预警；开/关/测试需管理员）
+宠物                         国服宠物对战世界任务（今天 + 明天，附上次野兽时间）
+宠物推送 开/关/状态/测试      每天 12:05 预告明日批次（有重量级野兽加预警；开/关/测试需管理员）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -1586,27 +1586,25 @@ class WowPlugin(Star):
 
     @filter.regex(T_PET)
     async def pet_cmd(self, event: AstrMessageEvent):
-        '''宠物 [详情]：国服当前的宠物对战世界任务（美服同批，窗口错位 8 小时）'''
+        '''宠物：国服宠物对战世界任务（今天 + 明天，欧服数据源）'''
         if not self._limited("default", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
-        detail = bool(self._cap(T_PET, event))
         try:
-            yield self._md(event, await petwq_svc.query_text(detail=True) if detail
-                           else await petwq_svc.query_text())
+            yield self._md(event, await petwq_svc.query_text())
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"查询失败：{e}")
 
     @filter.regex(T_PET_PUSH)
     async def pet_push_cmd(self, event: AstrMessageEvent):
-        '''宠物推送 开/关/状态/测试：每日通报当天国服宠物任务（每天 16:05，有重量级野兽加预警；开/关/测试需管理员）'''
+        '''宠物推送 开/关/状态/测试：每天 12:05 预告明日国服宠物任务（欧服切批后立取，有重量级野兽加预警；开/关/测试需管理员）'''
         def status(on: bool) -> str:
             return (f"本群宠物任务通报：{'已开启' if on else '已关闭'}\n"
-                    "每天 16:05 通报国服今天 07:00 刷新的宠物对战世界任务"
-                    "（附剩余时间与上次野兽出现时间），有重量级野兽时加预警横幅")
+                    "每天 12:05 预告国服明天 07:00 开始的宠物对战世界任务"
+                    "（欧服数据源，切批后立取；附今天批次与上次野兽出现时间），有重量级野兽时加预警横幅")
         async for r in self._push_toggle_cmd(
             event, self._cap(T_PET_PUSH, event), "pet_push_groups", "宠物推送",
-            on_msg="已开启本群宠物任务通报（每天 16:05 通报当天批次，有重量级野兽加预警）",
+            on_msg="已开启本群宠物任务通报（每天 12:05 预告明天批次，有重量级野兽加预警）",
             off_msg="已关闭本群宠物任务通报",
             status_fn=status,
             test_fn=lambda ev: self._pet_test(ev),
@@ -1726,11 +1724,11 @@ class WowPlugin(Star):
             except Exception as e:  # noqa: BLE001
                 logger.warning("周报生成失败: %s", e)
 
-        # 宠物对战世界任务通报（每天北京时间 16:05 拉美服当前批次）
-        # 国服与美服同批、窗口错位 8 小时（美服 23:00 切批，国服次日 07:00 切批）；
-        # 16:05 拉到的 Active 批次（end=今晚 23:00）= 国服今天 07:00 已开始的批次
+        # 宠物对战世界任务通报（每天北京时间 12:05，欧服切批后立取明日批次）
+        # 欧服在北京 12:00 切批（比美服早 11 小时），与国服同批；
+        # 12:05 拉到的新 Active 批次 = 国服明天 07:00 开始的批次
         pet_groups = self._norm_umo_list("pet_push_groups")  # 归一：裸群号自动补全 umo
-        if pet_groups and now.tm_hour == 16 and now.tm_min == 5 and self._fire_once("petwq", now):
+        if pet_groups and now.tm_hour == 12 and now.tm_min == 5 and self._fire_once("petwq", now):
             try:
                 text = await petwq_svc.push_text()
             except Exception as e:  # noqa: BLE001
