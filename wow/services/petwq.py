@@ -7,11 +7,12 @@ todayinwow.com 的 /api/wqs 只知道**当前激活**的世界任务（无未来
 军团再临宠物对战世界任务是每日一批、持续 24 小时，全部在美服每日重置时刻
 （15:00 UTC = 北京时间 23:00）结束。
 
-国服比美服晚套用一批：每个批次在美服结束后 8 小时，国服才在次日上午 07:00
-重置时开始同一批（美服 16 点 = 北京早上 7 点查到的当前批次，是国服**下一天
-07:00** 才开始的）。所以任何时刻查美服「当前」都是对国服的预测：
-- 白天（北京 07:00–23:00）查 → 国服**明天** 07:00 的批次
-- 夜里（北京 23:00–次日 07:00）查 → 国服**后天** 07:00 的批次（美服刚刷的新批）
+国服与美服做的是**同一批**任务，只是窗口错位 8 小时（2026-09-16 实测定稿）：
+美服批 D-1 日 23:00 ~ D 日 23:00（end = D 日 23:00）→ 国服同批
+D 日 07:00 ~ D+1 日 07:00（07:00 对齐国服每日重置）。所以：
+- 白天（北京 07:00–23:00）查 Active → 国服**今天** 07:00 已开始的批次
+- 夜里（北京 23:00–次日 07:00）查 Active（美服刚刷新的新批）→ 国服**明天** 07:00 的批次
+- 16:05 定时推送取 Active 批 = 通报**今天**的批次（当日通报，剩约 15 小时）
 
 重量级野兽（Beasts of Burden，41935，风暴峡湾）是通报重点。
 """
@@ -43,6 +44,9 @@ _cache_bob_last: dt.datetime | None = None
 
 # 账本：记录重量级野兽每次出现的国服日期，用于「上次出现」展示
 _LEDGER = "petwq_bob_seen.json"
+# v1.1.16~v1.1.20 的旧模型把国服窗口算成 end+1 日，账本日期整体晚了一天。
+# 2026-09-16 定稿模型 B（窗口 = end 当日 07:00）后，首次读到旧账本时平移回来。
+_LEDGER_OLD_MODEL_UNTIL = "2026-09-16"
 
 
 def _now_cn() -> dt.datetime:
@@ -63,15 +67,17 @@ def _to_cn(ts: str) -> dt.datetime | None:
 
 
 def cn_window(end_cn: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
-    """美服批次结束时刻（北京时间 23:00）→ 国服可做窗口（结束后次日上午 07:00 起 24 小时）。
+    """美服批次结束时刻（北京时间 23:00）→ 国服可做窗口（**同一批**，窗口错位 8 小时）。
 
-    美服批次于北京时间 D 日 23:00 结束（end_cn）；国服在 D+1 日 07:00 重置时
-    才开始同一批，D+2 日 07:00 结束。
+    美服批次：D-1 日 23:00 ~ D 日 23:00（end_cn = D 日 23:00）；
+    国服同批：D 日 07:00 ~ D+1 日 07:00（07:00 对齐国服每日重置）。
+    2026-09-16 实测定稿：国服上午正在做的就是美服 Active 批（弗鲁莫斯等 5 个），
+    剩余约 22h（= D 日 07:00 起算），并非「等美服结束后次日后才开始」。
     """
     end_cn = end_cn.astimezone(CN_TZ)
-    # end 落在北京 23:00（偶有秒级抖动）；防御：落在凌晨算前一天的批次
+    # end 落在北京 23:00（偶有秒级抖动）；防御：落在凌晨/上午算前一天的批次
     day = end_cn.date() if end_cn.hour >= 12 else (end_cn - dt.timedelta(days=1)).date()
-    start = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(7, 0), tzinfo=CN_TZ)
+    start = dt.datetime.combine(day, dt.time(7, 0), tzinfo=CN_TZ)
     return start, start + dt.timedelta(days=1)
 
 
@@ -173,7 +179,24 @@ def bob_last_text() -> str:
 
 
 def _bob_last_seen() -> dict:
-    return load_json(_LEDGER, {}) or {}
+    """读账本；v1.1.20 及之前按旧模型（晚一天）写入的日期平移一天。"""
+    data = load_json(_LEDGER, {}) or {}
+    dates = data.get("dates") or []
+    if dates and not data.get("migrated"):
+        shift = []
+        for d in dates:
+            if d <= _LEDGER_OLD_MODEL_UNTIL:
+                try:
+                    t = dt.datetime.strptime(d, "%Y-%m-%d") - dt.timedelta(days=1)
+                    shift.append(t.strftime("%Y-%m-%d"))
+                except ValueError:
+                    shift.append(d)
+            else:
+                shift.append(d)
+        data["dates"] = sorted(set(shift))[-60:]
+        data["migrated"] = True
+        save_json(_LEDGER, data)
+    return data
 
 
 def _bob_cn_date(end_cn: dt.datetime) -> str:
@@ -275,11 +298,13 @@ async def query_text(detail: bool = False) -> str:
 
 
 async def push_text() -> str | None:
-    """每日推送文案（16:05）：通报国服明天的批次；有重量级野兽时加预警横幅。
+    """每日推送文案（16:05）：通报国服**今天**的批次；有重量级野兽时加预警横幅。
 
-    国服明天的批次 = **今晚**（北京 23:00）美服结束的那批。按结束日过滤而不是
-    只看 Active：数据源偶发提前翻页时（Active 已换成明晚结束的下一批），今晚
-    结束的那批仍留在历史记录里，按结束日照样捞得回来，不会漏推/推错。
+    模型 B：国服与美服同批（窗口错位 8h）。16:05 时美服 Active 的批次
+    （end=今晚 23:00）= 国服今天 07:00 已开始的批次，剩约 15 小时——
+    推送语义为「当日通报」（晚上看到还来得及做），不是预告。
+    仍按结束日过滤取数：数据源偶发提前翻页时，今晚结束的那批（= 国服今天
+    的批次）照常从历史记录里捞回，不会推成明天的批次。
     """
     try:
         today = _now_cn().date()

@@ -196,8 +196,8 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 处罚名单更新 [强制]           抓取新名单；「强制」忽略已收录记录重抓（需管理员）
 处罚通报推送 开/关/状态/测试  收录到新名单自动通报本群（开/关/测试需管理员）
 **—— 宠物对战 ——**
-宠物 [详情]                  预测国服明天宠物对战世界任务（附可做时间区间 + 上次野兽时间）
-宠物推送 开/关/状态/测试      每日通报明天批次（有重量级野兽加预警；开/关/测试需管理员）
+宠物 [详情]                  国服今天宠物对战世界任务（附可做时间区间 + 上次野兽时间）
+宠物推送 开/关/状态/测试      每日通报当天批次（有重量级野兽加预警；开/关/测试需管理员）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -1586,7 +1586,7 @@ class WowPlugin(Star):
 
     @filter.regex(T_PET)
     async def pet_cmd(self, event: AstrMessageEvent):
-        '''宠物 [详情]：预测国服明天的宠物对战世界任务（美服当前批次 → 国服窗口）'''
+        '''宠物 [详情]：国服当前的宠物对战世界任务（美服同批，窗口错位 8 小时）'''
         if not self._limited("default", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
@@ -1599,14 +1599,14 @@ class WowPlugin(Star):
 
     @filter.regex(T_PET_PUSH)
     async def pet_push_cmd(self, event: AstrMessageEvent):
-        '''宠物推送 开/关/状态/测试：每日通报明天国服宠物任务（每天 16:05，有重量级野兽加预警；开/关/测试需管理员）'''
+        '''宠物推送 开/关/状态/测试：每日通报当天国服宠物任务（每天 16:05，有重量级野兽加预警；开/关/测试需管理员）'''
         def status(on: bool) -> str:
             return (f"本群宠物任务通报：{'已开启' if on else '已关闭'}\n"
-                    "每天 16:05 通报国服明天 07:00 刷新的宠物对战世界任务"
-                    "（附可做时间区间与上次野兽出现时间），有重量级野兽时加预警横幅")
+                    "每天 16:05 通报国服今天 07:00 刷新的宠物对战世界任务"
+                    "（附剩余时间与上次野兽出现时间），有重量级野兽时加预警横幅")
         async for r in self._push_toggle_cmd(
             event, self._cap(T_PET_PUSH, event), "pet_push_groups", "宠物推送",
-            on_msg="已开启本群宠物任务通报（每天 16:05 通报明天批次，有重量级野兽加预警）",
+            on_msg="已开启本群宠物任务通报（每天 16:05 通报当天批次，有重量级野兽加预警）",
             off_msg="已关闭本群宠物任务通报",
             status_fn=status,
             test_fn=lambda ev: self._pet_test(ev),
@@ -1727,8 +1727,8 @@ class WowPlugin(Star):
                 logger.warning("周报生成失败: %s", e)
 
         # 宠物对战世界任务通报（每天北京时间 16:05 拉美服当前批次）
-        # 国服比美服晚一批：批次从美服结束后 8 小时，国服次日 07:00 重置才开始；
-        # 16:05 拉到的当前批次 = 国服明天 07:00 的批次（美服 16 点当前 = 国服下一天）
+        # 国服与美服同批、窗口错位 8 小时（美服 23:00 切批，国服次日 07:00 切批）；
+        # 16:05 拉到的 Active 批次（end=今晚 23:00）= 国服今天 07:00 已开始的批次
         pet_groups = self._norm_umo_list("pet_push_groups")  # 归一：裸群号自动补全 umo
         if pet_groups and now.tm_hour == 16 and now.tm_min == 5 and self._fire_once("petwq", now):
             try:
