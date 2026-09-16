@@ -34,8 +34,10 @@ BOB_CN = "重量级野兽"
 BOB_ZONE = "风暴峡湾"
 CN_TZ = dt.timezone(dt.timedelta(hours=8))  # 国服 = 北京时间
 
-# 缓存：手动查询与定时推送共用一次抓取（10 分钟）
+# 缓存：手动查询与定时推送共用一次抓取（10 分钟）。
+# _cache_all 存 (quest, end_cn) 原始对，可按结束日反复过滤而不重抓。
 _cache_at: float = 0
+_cache_all: list[tuple[dict, dt.datetime]] | None = None
 _cache_pets: list[dict] | None = None
 _cache_bob_last: dt.datetime | None = None
 
@@ -73,50 +75,71 @@ def cn_window(end_cn: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
     return start, start + dt.timedelta(days=1)
 
 
-async def fetch_data() -> tuple[list[dict], dt.datetime | None]:
-    """拉取当前激活的宠物任务 + 重量级野兽上次出现时刻（10 分钟缓存）。
+async def fetch_data(target_end_day: dt.date | None = None) -> tuple[list[dict], dt.datetime | None]:
+    """拉取宠物任务 + 重量级野兽上次出现时刻（10 分钟缓存）。
 
     返回 (pets, bob_last)：bob_last 为野兽上次批次的美服结束时刻（国服时区），
     当前正在活跃时即本批结束时刻。
+
+    target_end_day：只保留美服结束时刻落在北京该日（默认 23:00 前后）的任务。
+    None = 不过滤（当前 Active 的批次）。数据源偶发**提前翻页**（如北京 15:30 就
+    把 Active 换成明晚结束的下一批）时，上一批任务仍留在返回里、状态变为其结束
+    时刻字符串——按结束日过滤就能把「今晚结束的那批」（= 国服明天的批次）捞回来。
     """
-    global _cache_pets, _cache_bob_last, _cache_at
+    global _cache_pets, _cache_bob_last, _cache_all, _cache_at
     import time
 
     now = time.time()
-    if _cache_pets is not None and now - _cache_at < 600:
-        return _cache_pets, _cache_bob_last
-    resp = await post_json(
-        WQS_API,
-        json_body={"region": "NA", "expansion": "legion"},
-        timeout=30,
-    )
-    pets: list[dict] = []
-    bob_last: dt.datetime | None = None
-    for q in resp.get("data") or []:
-        if q.get("poi_type") != PET_POI:
-            continue
-        qid = int(q.get("quest_id") or 0)
-        end = _to_cn(q.get("end_timestamp") or "")
-        if qid == BOB_ID and end is not None:
-            bob_last = end
-        if q.get("status") != "Active" or end is None:
-            continue
+    if _cache_all is not None and now - _cache_at < 600:
+        raw = _cache_all
+    else:
+        resp = await post_json(
+            WQS_API,
+            json_body={"region": "NA", "expansion": "legion"},
+            timeout=30,
+        )
+        raw = []
+        for q in resp.get("data") or []:
+            if q.get("poi_type") != PET_POI:
+                continue
+            end = _to_cn(q.get("end_timestamp") or "")
+            if end is None:
+                continue
+            raw.append((q, end))
+        _cache_all = raw
+        _cache_at = now
+
+    def _row(q: dict, end: dt.datetime) -> dict:
         rewards = []
         for r in q.get("rewards") or []:
             nm = reward_cn(r.get("item_name") or "")
             amt = r.get("amount")
             if nm:
                 rewards.append(f"{nm} x{amt}" if amt else nm)
-        pets.append({
-            "quest_id": qid,
+        return {
+            "quest_id": int(q.get("quest_id") or 0),
             "name_en": q.get("name") or "",
-            "name_cn": quest_name_cn(qid, q.get("name") or ""),
+            "name_cn": quest_name_cn(int(q.get("quest_id") or 0), q.get("name") or ""),
             "zone": zone_cn(q.get("zone") or ""),
             "end_cn": end,          # 本批美服结束时刻（国服时区显示）
             "rewards": rewards,
-        })
+        }
+
+    pets: list[dict] = []
+    bob_last: dt.datetime | None = None
+    for q, end in raw:
+        qid = int(q.get("quest_id") or 0)
+        if qid == BOB_ID:
+            bob_last = end
+        # 归一化结束日：end 常落在北京 23:00（偶有秒级抖动）；凌晨落前一天的批次
+        day = end.date() if end.hour >= 12 else (end - dt.timedelta(days=1)).date()
+        if target_end_day is not None and day != target_end_day:
+            continue
+        if q.get("status") != "Active" and target_end_day is None:
+            continue
+        pets.append(_row(q, end))
     pets.sort(key=lambda x: x["quest_id"])
-    _cache_pets, _cache_bob_last, _cache_at = pets, bob_last, now
+    _cache_pets, _cache_bob_last = pets, bob_last
     return pets, bob_last
 
 
@@ -228,7 +251,7 @@ def build_text(
 
 async def query_text(detail: bool = False) -> str:
     """手动查询：当前批次 + 国服窗口 + 上次野兽出现时间。"""
-    pets, bob_last = await fetch_data()
+    pets, bob_last = await fetch_data()  # 不过滤：当前 Active 批次
     text = build_text(pets, bob_last, detail=detail)
     if text is None:
         return "暂时拉不到宠物对战世界任务数据（todayinwow.com），请稍后再试"
@@ -236,10 +259,23 @@ async def query_text(detail: bool = False) -> str:
 
 
 async def push_text() -> str | None:
-    """每日推送文案（16:05）：通报国服明天的批次；有重量级野兽时加预警横幅。"""
+    """每日推送文案（16:05）：通报国服明天的批次；有重量级野兽时加预警横幅。
+
+    国服明天的批次 = **今晚**（北京 23:00）美服结束的那批。按结束日过滤而不是
+    只看 Active：数据源偶发提前翻页时（Active 已换成明晚结束的下一批），今晚
+    结束的那批仍留在历史记录里，按结束日照样捞得回来，不会漏推/推错。
+    """
     try:
-        pets, bob_last = await fetch_data()
+        today = _now_cn().date()
+        pets, bob_last = await fetch_data(target_end_day=today)
     except Exception as e:  # noqa: BLE001
         logger.warning("[petwq] 拉取宠物任务失败: %s", e)
         return None
+    if not pets:
+        # 兜底：极端情况（历史记录也丢了今晚那批）退回 Active 批次
+        try:
+            pets, bob_last = await fetch_data()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[petwq] 拉取宠物任务失败: %s", e)
+            return None
     return build_text(pets, bob_last, push=True)
