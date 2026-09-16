@@ -190,6 +190,18 @@ def _fmt(t: dt.datetime) -> str:
     return t.strftime("%m-%d %H:%M")
 
 
+def _disp_width(s: str) -> int:
+    """显示宽度：CJK/全角算 2，其余算 1（与 wclfmt 同一套口径）。"""
+    import unicodedata
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def _pad_to(s: str, width: int) -> str:
+    """按显示宽度右侧补全角空格到 width（全角空格不会被 MD 渲染吞掉）。"""
+    gap = width - _disp_width(s)
+    return s + "　" * max(0, gap) if gap > 0 else s
+
+
 def _rel_day(d: dt.date) -> str:
     n = (d - _now_cn().date()).days
     if n == 0:
@@ -239,9 +251,13 @@ def build_text(
         lines.append(f"「{BOB_CN}」在{BOB_ZONE}，{rel} 07:00 重置后可做！")
     lines.append("")
     lines.append(f"本批任务（{len(pets)} 个）：")
+    # 地图列按显示宽度对齐（中文名 2 宽）；名字与地图之间用全角空格，避免 MD
+    # 渲染吞掉粗体后的半角空格导致两者贴在一起。尾部不补空格（行尾补位无意义）。
+    zone_w = max(_disp_width(p["zone"]) for p in pets)
     for p in pets:
         r = f"（{'、'.join(p['rewards'][:3])}）" if (detail and p["rewards"]) else ""
-        lines.append(f"· **{p['name_cn']}** {p['zone']}{r}")
+        zone = _pad_to(p["zone"], zone_w) if r else p["zone"]
+        lines.append(f"· **{p['name_cn']}**　{zone}{r}")
     if not detail and any(p["rewards"] for p in pets):
         lines.append("\n发「宠物 详情」看奖励明细")
     lines.append("")
