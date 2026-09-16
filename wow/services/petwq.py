@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""宠物对战世界任务（重量级野兽等）服务：todayinwow.com 美服数据 → 国服时间。
+"""宠物对战世界任务（重量级野兽等）服务：todayinwow.com 美服数据 → 国服预测。
 
 数据源与原理
 ------------
@@ -7,11 +7,11 @@ todayinwow.com 的 /api/wqs 只知道**当前激活**的世界任务（无未来
 军团再临宠物对战世界任务是每日一批、持续 24 小时，全部在美服每日重置时刻
 （15:00 UTC = 北京时间 23:00）结束。
 
-美服比国服早 8 小时刷新：美服 23:00（北京时间）刷新的批次，国服要等次日
-07:00 重置后才出现，因此：
-- 北京时间 23:00–次日 07:00 拉取 → 拿到国服**明早 07:00** 才出现的新批次（预测）
-- 北京时间 07:00–23:00 拉取 → 拿到国服**当天 07:00 已刷新**的批次
-两种情况共用同一条窗口公式（见 cn_window）。
+国服比美服晚套用一批：每个批次在美服结束后 8 小时，国服才在次日上午 07:00
+重置时开始同一批（美服 16 点 = 北京早上 7 点查到的当前批次，是国服**下一天
+07:00** 才开始的）。所以任何时刻查美服「当前」都是对国服的预测：
+- 白天（北京 07:00–23:00）查 → 国服**明天** 07:00 的批次
+- 夜里（北京 23:00–次日 07:00）查 → 国服**后天** 07:00 的批次（美服刚刷的新批）
 
 重量级野兽（Beasts of Burden，41935，风暴峡湾）是通报重点。
 """
@@ -61,15 +61,15 @@ def _to_cn(ts: str) -> dt.datetime | None:
 
 
 def cn_window(end_cn: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
-    """美服批次结束时刻（北京时间 23:00）→ 国服可做窗口（次日 07:00 起 24 小时）。
+    """美服批次结束时刻（北京时间 23:00）→ 国服可做窗口（结束后次日上午 07:00 起 24 小时）。
 
-    美服批次于北京时间 D-1 日 23:00 出现、D 日 23:00 结束（end_cn）。
-    国服在 D 日 07:00 重置后套用同一批，D+1 日 07:00 结束。
+    美服批次于北京时间 D 日 23:00 结束（end_cn）；国服在 D+1 日 07:00 重置时
+    才开始同一批，D+2 日 07:00 结束。
     """
     end_cn = end_cn.astimezone(CN_TZ)
     # end 落在北京 23:00（偶有秒级抖动）；防御：落在凌晨算前一天的批次
     day = end_cn.date() if end_cn.hour >= 12 else (end_cn - dt.timedelta(days=1)).date()
-    start = dt.datetime.combine(day, dt.time(7, 0), tzinfo=CN_TZ)
+    start = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(7, 0), tzinfo=CN_TZ)
     return start, start + dt.timedelta(days=1)
 
 
@@ -167,12 +167,25 @@ def _fmt(t: dt.datetime) -> str:
     return t.strftime("%m-%d %H:%M")
 
 
-def _remaining(close: dt.datetime) -> str:
-    delta = close - _now_cn()
-    hours = delta.total_seconds() / 3600
-    if hours >= 1:
-        return f"（还剩约 {round(hours)} 小时）"
-    if hours > 0:
+def _rel_day(d: dt.date) -> str:
+    n = (d - _now_cn().date()).days
+    if n == 0:
+        return "今天"
+    if n == 1:
+        return "明天"
+    if n == 2:
+        return "后天"
+    return d.strftime("%m-%d")
+
+
+def _window_status(start: dt.datetime, close: dt.datetime) -> str:
+    now = _now_cn()
+    if now < start:
+        return f"（{_rel_day(start.date())} 07:00 开始）"
+    if now < close:
+        hours = (close - now).total_seconds() / 3600
+        if hours >= 1:
+            return f"（还剩约 {round(hours)} 小时）"
         return f"（还剩约 {int(hours * 60)} 分钟）"
     return ""
 
@@ -189,17 +202,18 @@ def build_text(
         record_bob([_bob_cn_date(bob_last)])
     end = pets[0]["end_cn"]  # 同批任务结束时刻一致
     start, close = cn_window(end)
+    rel = _rel_day(start.date())
     bob = next((p for p in pets if p["quest_id"] == BOB_ID), None)
 
     lines = []
     if bob:
-        lines.append(f"**🔥 {BOB_CN}预警**" if push else f"**🔥 今天国服有「{BOB_CN}」！**（{BOB_ZONE}）")
+        lines.append(f"**🔥 {BOB_CN}预警（国服{rel}）**")
     else:
-        lines.append("**🐾 国服宠物对战世界任务**" if push else "**🐾 宠物对战世界任务**")
-    lines.append(f"可做时间：**{_fmt(start)} – {_fmt(close)}**（国服时间）{_remaining(close)}")
+        lines.append(f"**🐾 宠物对战世界任务（国服{rel}）**")
+    lines.append(f"可做时间：**{_fmt(start)} – {_fmt(close)}**（国服时间）{_window_status(start, close)}")
     if bob:
         lines.append("")
-        lines.append(f"「{BOB_CN}」在{BOB_ZONE}，今天记得做！")
+        lines.append(f"「{BOB_CN}」在{BOB_ZONE}，{rel} 07:00 重置后可做！")
     lines.append("")
     lines.append(f"本批任务（{len(pets)} 个）：")
     for p in pets:
@@ -222,7 +236,7 @@ async def query_text(detail: bool = False) -> str:
 
 
 async def push_text() -> str | None:
-    """每日推送文案（16:05）：通报当前批次；有重量级野兽时加预警横幅。"""
+    """每日推送文案（16:05）：通报国服明天的批次；有重量级野兽时加预警横幅。"""
     try:
         pets, bob_last = await fetch_data()
     except Exception as e:  # noqa: BLE001
