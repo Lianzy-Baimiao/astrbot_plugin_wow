@@ -196,8 +196,8 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 处罚名单更新 [强制]           抓取新名单；「强制」忽略已收录记录重抓（需管理员）
 处罚通报推送 开/关/状态/测试  收录到新名单自动通报本群（开/关/测试需管理员）
 **—— 宠物对战 ——**
-宠物 [详情]                  预测明天国服宠物对战世界任务（重量级野兽等）
-宠物推送 开/关/状态/测试      有重量级野兽时自动预警本群（开/关/测试需管理员）
+宠物 [详情]                  国服宠物对战世界任务（附可做时间区间 + 上次野兽时间）
+宠物推送 开/关/状态/测试      每日宠物任务通报（有重量级野兽加预警；开/关/测试需管理员）
 NGA 帖子链接直接发出来即可自动解析"""
 
 
@@ -1586,7 +1586,7 @@ class WowPlugin(Star):
 
     @filter.regex(T_PET)
     async def pet_cmd(self, event: AstrMessageEvent):
-        '''宠物 [详情]：预测明天国服宠物对战世界任务（美服当前批次 → 国服窗口）'''
+        '''宠物 [详情]：国服宠物对战世界任务（美服当前批次 → 国服可做窗口）'''
         if not self._limited("default", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
@@ -1599,14 +1599,15 @@ class WowPlugin(Star):
 
     @filter.regex(T_PET_PUSH)
     async def pet_push_cmd(self, event: AstrMessageEvent):
-        '''宠物推送 开/关/状态/测试：重量级野兽预警（每天 16:05 检查美服数据，开/关/测试需管理员）'''
+        '''宠物推送 开/关/状态/测试：每日宠物任务通报（每天 16:05，有重量级野兽加预警；开/关/测试需管理员）'''
         def status(on: bool) -> str:
-            return (f"本群重量级野兽预警：{'已开启' if on else '已关闭'}\n"
-                    "每天 16:05 拉美服数据检查，明天国服有重量级野兽时自动预警（附国服可做时间区间）")
+            return (f"本群宠物任务通报：{'已开启' if on else '已关闭'}\n"
+                    "每天 16:05 推送当日国服宠物对战世界任务（附可做时间区间与上次野兽出现时间），"
+                    "有重量级野兽时加预警横幅")
         async for r in self._push_toggle_cmd(
             event, self._cap(T_PET_PUSH, event), "pet_push_groups", "宠物推送",
-            on_msg="已开启本群重量级野兽预警（每天 16:05 检查，有野兽自动提醒）",
-            off_msg="已关闭本群重量级野兽预警",
+            on_msg="已开启本群宠物任务通报（每天 16:05 推送，有重量级野兽加预警）",
+            off_msg="已关闭本群宠物任务通报",
             status_fn=status,
             test_fn=lambda ev: self._pet_test(ev),
         ):
@@ -1615,7 +1616,9 @@ class WowPlugin(Star):
     async def _pet_test(self, event: AstrMessageEvent) -> list:
         # 测试 = 当场跑一次完整查询（与定时推送同一份文案口径）
         try:
-            text = await petwq_svc.query_text(detail=True)
+            text = await petwq_svc.push_text()
+            if text is None:
+                return [event.plain_result("暂时拉不到宠物任务数据（todayinwow.com），请稍后再试")]
             return [self._md(event, "**[测试]**\n" + text)]
         except Exception as e:  # noqa: BLE001
             return [event.plain_result(f"查询失败：{e}")]
@@ -1723,21 +1726,22 @@ class WowPlugin(Star):
             except Exception as e:  # noqa: BLE001
                 logger.warning("周报生成失败: %s", e)
 
-        # 重量级野兽预警（每天北京时间 16:05 拉 NA 数据，预测明天国服批次）
-        # 美服夏令时重置 = 北京 23:00；16:05 时美服已是当天 04:05，批次必然已刷新
+        # 宠物对战世界任务通报（每天北京时间 16:05 拉美服当前批次）
+        # 美服批次 15:00 UTC（北京 23:00）刷新，国服次日 07:00 套用同一批；
+        # 16:05 拉取时国服当日批次已刷新 9 小时，通报全天窗口并给野兽加预警
         pet_groups = self._norm_umo_list("pet_push_groups")  # 归一：裸群号自动补全 umo
         if pet_groups and now.tm_hour == 16 and now.tm_min == 5 and self._fire_once("petwq", now):
             try:
-                text = await petwq_svc.push_check()
+                text = await petwq_svc.push_text()
             except Exception as e:  # noqa: BLE001
-                logger.warning("重量级野兽检查失败: %s", e)
+                logger.warning("宠物任务通报生成失败: %s", e)
                 text = None
             if text:
                 for umo in pet_groups:
                     try:
                         await self._send_text_to(umo, text)
                     except Exception as e:  # noqa: BLE001
-                        logger.warning("重量级野兽预警推送失败 %s: %s", umo, e)
+                        logger.warning("宠物任务通报推送失败 %s: %s", umo, e)
 
         # 处罚名单自动抓取（先于新闻块：新闻块内有 return，放后面会被跳过）
         if punishfeed_svc is not None and bool(cfg.get("punish_auto_fetch", False)):

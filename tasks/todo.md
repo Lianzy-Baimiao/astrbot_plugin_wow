@@ -1,17 +1,20 @@
-# tasks/todo.md — v1.1.16：宠物对战世界任务预警（重量级野兽）
+# tasks/todo.md — v1.1.16/v1.1.17：宠物对战世界任务通报（重量级野兽）
 
 - [x] 数据源验证：todayinwow.com /api/wqs（NA+legion，每日 15:00 UTC 批次，Active+end_timestamp）
-- [x] 时区推算：美服批次北京 23:00 结束 → 国服次日 07:00–23:00 可做（16 小时窗口）
-- [x] wow/data/petquests.py：58 任务中文名表 + 区域/奖励/阵营翻译（wowhead CN 重定向抓取）
-- [x] wow/services/petwq.py：fetch_active_pets（10 分钟缓存）、cn_window、账本（petwq_bob_seen.json）、query_text、push_check
-- [x] main.py：宠物 [详情] 指令、宠物推送 开/关/状态/测试（复用推送四件套）、定时器 16:05 检查、HELP_TEXT
-- [x] _conf_schema.json：pet_push_groups；README 指令表+原理+配置说明
-- [x] 测试：py_compile、AST 结构、正则 11 用例、窗口/解析/账本/翻译单测、实弹 query_text、模拟 BoB push_check、strip_markdown
-- [x] 任务中文名 56/58 经 wowhead 验证（49057/49058 限流未取到，暂用通行译名，后续对表）
-- [x] 打包 zip、git 提交推送、发 Release v1.1.16
+- [x] wow/data/petquests.py：58 任务中文名表（56 经 wowhead 验证，49057/49058 暂用通行译名）+ 区域/奖励/阵营翻译
+- [x] wow/services/petwq.py：fetch_data（10 分钟缓存 + 野兽 last-seen）、cn_window、账本（petwq_bob_seen.json，自动补记）、query_text、push_text
+- [x] main.py：宠物 [详情]、宠物推送 开/关/状态/测试、定时器 16:05 通报、HELP_TEXT
+- [x] v1.1.16 发布（commit 4f85d40/1f8e0d5）
+- [x] **v1.1.17 修正**：窗口公式错了一天（用户实测抓到）。正确公式：批次结束（北京 23:00）→ 国服
+      当日 07:00 – 次日 07:00（end-16h 起 24h）；v1.1.16 误写成 end+1 天的 07:00–23:00
+- [x] v1.1.17 顺带：推送改为每日通报当前批次（不再只在野兽日推送）；账本从数据源 last-seen 自动补记；
+      删掉文案里错误的「驯龙手册」表述
+- [ ] 待用户国服实机验证轮换模型：EU/NA 实测同一天同一批；国服按用户模型「美服早 8 小时」实现。
+      若与游戏内不符（当天任务不是美服当前批次），需重新评估数据源方向
 
 ## Review
-- 数据源只认 Active + end_timestamp 的宠物任务；CN region 返回全空，确认必须走 NA 预测。
-- 推送定时 16:05（非整点）：美服夏令时 15:00 UTC 重置 = 北京 23:00，16:05 时美服当天数据必然已刷新。
-- 名表新任务回退英文原名，不影响功能。
-- wowhead CN 抓名走重定向 URL slug，限流凶（约 15 连发后 403），间隔 6-10s + 多轮退避（60s~900s）可逐步拿全。
+- 数据源只认 Active + end_timestamp 的宠物任务；CN region 返回全空，必须走 NA 数据。
+- 时区链：美服批次 15:00 UTC（北京 23:00）刷新 → 国服次日 07:00 重置套用 → 24h 后结束。
+  同一公式覆盖两种查询时机（23:00–07:00 查 = 预测明早批次；07:00–23:00 查 = 当日批次）。
+- wowhead CN 抓名走重定向 URL slug，约 15 连发后 403，间隔 6-10s + 多轮退避可拿全。
+- 推送定时 16:05（用户指定 16 点，取非整点防重复）；窗口剩余时间随文案一起推。

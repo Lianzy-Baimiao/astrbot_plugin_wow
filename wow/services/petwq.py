@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-"""宠物对战世界任务（重量级野兽等）服务：todayinwow.com 美服数据 → 国服预测。
+"""宠物对战世界任务（重量级野兽等）服务：todayinwow.com 美服数据 → 国服时间。
 
 数据源与原理
 ------------
 todayinwow.com 的 /api/wqs 只知道**当前激活**的世界任务（无未来排期）。
 军团再临宠物对战世界任务是每日一批、持续 24 小时，全部在美服每日重置时刻
-（15:00 UTC，夏令时固定；国服换算成北京时间 23:00）一起结束。
+（15:00 UTC = 北京时间 23:00）结束。
 
-美服比国服早 8 小时进入「下一天」：美服 23:00（北京时间）刷新的这批任务，
-国服要等到次日 07:00 重置后才会出现——但**任务是同一批**。所以：
+美服比国服早 8 小时刷新：美服 23:00（北京时间）刷新的批次，国服要等次日
+07:00 重置后才出现，因此：
+- 北京时间 23:00–次日 07:00 拉取 → 拿到国服**明早 07:00** 才出现的新批次（预测）
+- 北京时间 07:00–23:00 拉取 → 拿到国服**当天 07:00 已刷新**的批次
+两种情况共用同一条窗口公式（见 cn_window）。
 
-    北京时间每天 23:00 后（16 点美服当前 = 次日 0 点北京前，16 点后必然已刷新）
-    拉一次美服「当前激活」的宠物任务，就能预测国服明天 07:00–23:00 的任务。
-
-重量级野兽（Beasts of Burden，41935）是其中最值得通报的（驯龙手册日常热点）。
+重量级野兽（Beasts of Burden，41935，风暴峡湾）是通报重点。
 """
 
 from __future__ import annotations
@@ -30,13 +30,16 @@ logger = logging.getLogger("astrbot_plugin_wow.petwq")
 WQS_API = "https://www.todayinwow.com/api/wqs"
 PET_POI = "worldquest-icon-petbattle"
 BOB_ID = 41935  # Beasts of Burden = 重量级野兽
+BOB_CN = "重量级野兽"
+BOB_ZONE = "风暴峡湾"
 CN_TZ = dt.timezone(dt.timedelta(hours=8))  # 国服 = 北京时间
 
 # 缓存：手动查询与定时推送共用一次抓取（10 分钟）
 _cache_at: float = 0
-_cache: list[dict] | None = None
+_cache_pets: list[dict] | None = None
+_cache_bob_last: dt.datetime | None = None
 
-# 历史账本：记录重量级野兽每次出现（北京时间日期串），用于「上次出现」展示
+# 账本：记录重量级野兽每次出现的国服日期，用于「上次出现」展示
 _LEDGER = "petwq_bob_seen.json"
 
 
@@ -57,25 +60,46 @@ def _to_cn(ts: str) -> dt.datetime | None:
         return None
 
 
-async def fetch_active_pets(region: str = "NA") -> list[dict]:
-    """拉取当前激活的宠物对战世界任务（美服），返回规范化列表。"""
-    global _cache, _cache_at
+def cn_window(end_cn: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
+    """美服批次结束时刻（北京时间 23:00）→ 国服可做窗口（次日 07:00 起 24 小时）。
+
+    美服批次于北京时间 D-1 日 23:00 出现、D 日 23:00 结束（end_cn）。
+    国服在 D 日 07:00 重置后套用同一批，D+1 日 07:00 结束。
+    """
+    end_cn = end_cn.astimezone(CN_TZ)
+    # end 落在北京 23:00（偶有秒级抖动）；防御：落在凌晨算前一天的批次
+    day = end_cn.date() if end_cn.hour >= 12 else (end_cn - dt.timedelta(days=1)).date()
+    start = dt.datetime.combine(day, dt.time(7, 0), tzinfo=CN_TZ)
+    return start, start + dt.timedelta(days=1)
+
+
+async def fetch_data() -> tuple[list[dict], dt.datetime | None]:
+    """拉取当前激活的宠物任务 + 重量级野兽上次出现时刻（10 分钟缓存）。
+
+    返回 (pets, bob_last)：bob_last 为野兽上次批次的美服结束时刻（国服时区），
+    当前正在活跃时即本批结束时刻。
+    """
+    global _cache_pets, _cache_bob_last, _cache_at
     import time
 
     now = time.time()
-    if _cache is not None and now - _cache_at < 600:
-        return _cache
+    if _cache_pets is not None and now - _cache_at < 600:
+        return _cache_pets, _cache_bob_last
     resp = await post_json(
         WQS_API,
-        json_body={"region": region, "expansion": "legion"},
+        json_body={"region": "NA", "expansion": "legion"},
         timeout=30,
     )
-    quests = []
+    pets: list[dict] = []
+    bob_last: dt.datetime | None = None
     for q in resp.get("data") or []:
-        if q.get("poi_type") != PET_POI or q.get("status") != "Active":
+        if q.get("poi_type") != PET_POI:
             continue
+        qid = int(q.get("quest_id") or 0)
         end = _to_cn(q.get("end_timestamp") or "")
-        if end is None:
+        if qid == BOB_ID and end is not None:
+            bob_last = end
+        if q.get("status") != "Active" or end is None:
             continue
         rewards = []
         for r in q.get("rewards") or []:
@@ -83,93 +107,104 @@ async def fetch_active_pets(region: str = "NA") -> list[dict]:
             amt = r.get("amount")
             if nm:
                 rewards.append(f"{nm} x{amt}" if amt else nm)
-        quests.append({
-            "quest_id": int(q.get("quest_id") or 0),
+        pets.append({
+            "quest_id": qid,
             "name_en": q.get("name") or "",
-            "name_cn": quest_name_cn(int(q.get("quest_id") or 0), q.get("name") or ""),
+            "name_cn": quest_name_cn(qid, q.get("name") or ""),
             "zone": zone_cn(q.get("zone") or ""),
-            "end_cn": end,          # 美服结束时刻（国服时区显示）
+            "end_cn": end,          # 本批美服结束时刻（国服时区显示）
             "rewards": rewards,
         })
-    quests.sort(key=lambda x: x["quest_id"])
-    _cache, _cache_at = quests, now
-    return quests
+    pets.sort(key=lambda x: x["quest_id"])
+    _cache_pets, _cache_bob_last, _cache_at = pets, bob_last, now
+    return pets, bob_last
 
 
-def _fmt(t: dt.datetime) -> str:
-    return t.strftime("%m-%d %H:%M")
-
-
-def cn_window(end_cn: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
-    """由美服结束时刻推国服可做窗口。
-
-    美服批次在北京时间 D 日 23:00 结束（= 新批次出现）。该批任务在国服
-    D+1 日 07:00 重置后出现、D+1 日 23:00 结束（国服只保留重置后的 16 小时）。
-    """
-    start = (end_cn + dt.timedelta(days=1)).replace(hour=7, minute=0, second=0, microsecond=0)
-    close = (end_cn + dt.timedelta(days=1)).replace(hour=23, minute=0, second=0, microsecond=0)
-    return start, close
-
-
-def _bob_last_seen() -> dict:
-    """账本：{dates: [...]} 记录重量级野兽历次出现（北京时间日期）。"""
-    return load_json(_LEDGER, {}) or {}
-
+# ---------------------------------------------------------------------------
+# 账本（重量级野兽出现记录）
+# ---------------------------------------------------------------------------
 
 def record_bob(dates: list[str]) -> None:
-    """把本轮观察到的出现日期并进账本（去重、保序）。"""
-    data = _bob_last_seen()
+    """把出现日期并进账本（去重、保序、只留最近 60 条）。"""
+    data = load_json(_LEDGER, {}) or {}
     seen = data.get("dates") or []
     for d in dates:
         if d not in seen:
             seen.append(d)
     seen.sort()
-    data["dates"] = seen[-60:]  # 只留最近 60 次
+    data["dates"] = seen[-60:]
     save_json(_LEDGER, data)
 
 
 def bob_last_text() -> str:
-    """「上次重量级野兽出现」文案（基于账本 + 数据源 last-seen 兜底）。"""
     dates = (_bob_last_seen().get("dates") or [])
     if dates:
         d = dt.datetime.strptime(dates[-1], "%Y-%m-%d")
         days_ago = (_now_cn().date() - d.date()).days
         if days_ago <= 0:
-            return f"上次出现：{dates[-1]}（今天）"
+            return f"上次重量级野兽：{dates[-1]}（今天）"
         if days_ago == 1:
-            return f"上次出现：{dates[-1]}（昨天）"
-        return f"上次出现：{dates[-1]}（{days_ago} 天前）"
-    return "上次出现：暂无记录"
+            return f"上次重量级野兽：{dates[-1]}（昨天）"
+        return f"上次重量级野兽：{dates[-1]}（{days_ago} 天前）"
+    return "上次重量级野兽：暂无记录"
 
 
-def _quests_text(pets: list[dict], start: dt.datetime, close: dt.datetime) -> str:
-    lines = []
-    for p in pets:
-        nm = p["name_cn"] if p["name_cn"] != p["name_en"] else p["name_en"]
-        r = f"（{'、'.join(p['rewards'][:3])}）" if p["rewards"] else ""
-        lines.append(f"· **{nm}** {p['zone']}{r}")
-    return "\n".join(lines)
+def _bob_last_seen() -> dict:
+    return load_json(_LEDGER, {}) or {}
 
 
-async def query_text(detail: bool = False) -> str:
-    """手动查询文本：当前美服激活的宠物任务 + 国服预测窗口。
+def _bob_cn_date(end_cn: dt.datetime) -> str:
+    """野兽批次美服结束时刻 → 国服出现日期（= 窗口起始日）。"""
+    start, _ = cn_window(end_cn)
+    return start.strftime("%Y-%m-%d")
 
-    detail=True 时带奖励明细。
-    """
-    pets = await fetch_active_pets()
+
+# ---------------------------------------------------------------------------
+# 文案
+# ---------------------------------------------------------------------------
+
+def _fmt(t: dt.datetime) -> str:
+    return t.strftime("%m-%d %H:%M")
+
+
+def _remaining(close: dt.datetime) -> str:
+    delta = close - _now_cn()
+    hours = delta.total_seconds() / 3600
+    if hours >= 1:
+        return f"（还剩约 {round(hours)} 小时）"
+    if hours > 0:
+        return f"（还剩约 {int(hours * 60)} 分钟）"
+    return ""
+
+
+def build_text(
+    pets: list[dict], bob_last: dt.datetime | None,
+    detail: bool = False, push: bool = False,
+) -> str | None:
+    """组装查询/推送文案。pets 为空返回 None（数据拉取失败由调用方兜底）。"""
     if not pets:
-        return "暂时拉不到宠物对战世界任务数据（todayinwow.com），请稍后再试"
+        return None
+    # 账本自动补记：数据源给出的最近一次野兽出现（含当前批次）
+    if bob_last is not None:
+        record_bob([_bob_cn_date(bob_last)])
     end = pets[0]["end_cn"]  # 同批任务结束时刻一致
     start, close = cn_window(end)
     bob = next((p for p in pets if p["quest_id"] == BOB_ID), None)
-    lines = ["**🐾 宠物对战世界任务（预测）**"]
-    lines.append(f"数据源：美服当前激活（国服 {_fmt(start)} – {_fmt(close)} 可做）")
+
+    lines = []
+    if bob:
+        lines.append(f"**🔥 {BOB_CN}预警**" if push else f"**🔥 今天国服有「{BOB_CN}」！**（{BOB_ZONE}）")
+    else:
+        lines.append("**🐾 国服宠物对战世界任务**" if push else "**🐾 宠物对战世界任务**")
+    lines.append(f"可做时间：**{_fmt(start)} – {_fmt(close)}**（国服时间）{_remaining(close)}")
     if bob:
         lines.append("")
-        lines.append("**🔥 明天国服有「重量级野兽」！**（风暴峡湾，囤驯龙手册日常）")
+        lines.append(f"「{BOB_CN}」在{BOB_ZONE}，今天记得做！")
     lines.append("")
-    lines.append(f"今日批次（{len(pets)} 个）：")
-    lines.append(_quests_text(pets, start, close))
+    lines.append(f"本批任务（{len(pets)} 个）：")
+    for p in pets:
+        r = f"（{'、'.join(p['rewards'][:3])}）" if (detail and p["rewards"]) else ""
+        lines.append(f"· **{p['name_cn']}** {p['zone']}{r}")
     if not detail and any(p["rewards"] for p in pets):
         lines.append("\n发「宠物 详情」看奖励明细")
     lines.append("")
@@ -177,31 +212,20 @@ async def query_text(detail: bool = False) -> str:
     return "\n".join(lines)
 
 
-async def push_check() -> str | None:
-    """定时推送检查：返回推送文本，无重量级野兽时返回 None。
+async def query_text(detail: bool = False) -> str:
+    """手动查询：当前批次 + 国服窗口 + 上次野兽出现时间。"""
+    pets, bob_last = await fetch_data()
+    text = build_text(pets, bob_last, detail=detail)
+    if text is None:
+        return "暂时拉不到宠物对战世界任务数据（todayinwow.com），请稍后再试"
+    return text
 
-    每天北京时间 16:03 调用（美服 16:00 后数据必然已刷新，即次日国服批次）。
-    """
-    pets = await fetch_active_pets()
-    if not pets:
-        logger.warning("[petwq] 拉取宠物任务失败，本轮跳过")
+
+async def push_text() -> str | None:
+    """每日推送文案（16:05）：通报当前批次；有重量级野兽时加预警横幅。"""
+    try:
+        pets, bob_last = await fetch_data()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[petwq] 拉取宠物任务失败: %s", e)
         return None
-    bob = next((p for p in pets if p["quest_id"] == BOB_ID), None)
-    if bob is None:
-        return None
-    end = pets[0]["end_cn"]
-    start, close = cn_window(end)
-    # 记账：以「国服可做日」为准
-    record_bob([start.strftime("%Y-%m-%d")])
-    lines = [
-        "**🔥 重量级野兽预警**",
-        "",
-        "明天国服刷新「重量级野兽」宠物世界任务（风暴峡湾）！",
-        f"可做时间：**{_fmt(start)} – {_fmt(close)}**（国服时间）",
-        "",
-        "驯龙手册日常别错过，明早 7 点后去风暴峡湾。",
-        "",
-        f"同批宠物任务（{len(pets)} 个）：",
-        _quests_text(pets, start, close),
-    ]
-    return "\n".join(lines)
+    return build_text(pets, bob_last, push=True)
