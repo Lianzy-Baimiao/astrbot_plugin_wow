@@ -156,7 +156,12 @@ async def fetch_data(
 # ---------------------------------------------------------------------------
 
 def record_bob(dates: list[str]) -> None:
-    """把出现日期并进账本（去重、保序、只留最近 60 条）。"""
+    """把出现日期并进账本（去重、保序、只留最近 60 条）。
+
+    先触发一次 _bob_last_seen()：旧模型的日期要在**本函数写入新日期之前**完成平移，
+    否则首次运行时会把自己刚写入的正确日期也平移一天（旧账本 vs 新写入同一个文件）。
+    """
+    _bob_last_seen()  # 先迁移旧账本（见 docstring 的说明）
     data = load_json(_LEDGER, {}) or {}
     seen = data.get("dates") or []
     for d in dates:
@@ -164,6 +169,8 @@ def record_bob(dates: list[str]) -> None:
             seen.append(d)
     seen.sort()
     data["dates"] = seen[-60:]
+    # 本函数写入的都是新模型日期：打上 migrated 标记，避免后续读取时被当成旧模型值平移
+    data["migrated"] = True
     save_json(_LEDGER, data)
 
 
