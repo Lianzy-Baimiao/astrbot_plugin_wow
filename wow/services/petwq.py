@@ -35,9 +35,8 @@ logger = logging.getLogger("astrbot_plugin_wow.petwq")
 WQS_API = "https://www.todayinwow.com/api/wqs"
 WQS_REGION = "EU"  # 欧服：北京 12:00 切批，比美服早 11 小时拿到国服明天的新批
 PET_POI = "worldquest-icon-petbattle"
-BOB_ID = 41935  # Beasts of Burden = 重量级野兽
+BOB_ID = 41935  # Beasts of Burden = 重量级野兽（风暴峡湾）
 BOB_CN = "重量级野兽"
-BOB_ZONE = "风暴峡湾"
 CN_TZ = dt.timezone(dt.timedelta(hours=8))  # 国服 = 北京时间
 
 # 缓存：手动查询与定时推送共用一次抓取（10 分钟）。
@@ -175,17 +174,19 @@ def record_bob(dates: list[str]) -> None:
 
 
 def bob_last_text() -> str:
+    """「上次重量级野兽」尾行；日期只写月-日，与正文口径一致。"""
     dates = (_bob_last_seen().get("dates") or [])
     if dates:
         d = dt.datetime.strptime(dates[-1], "%Y-%m-%d")
+        md = d.strftime("%m-%d")
         days_ago = (_now_cn().date() - d.date()).days
         if days_ago < 0:
-            return f"上次重量级野兽：{dates[-1]}（{_rel_day(d.date())}）"
+            return f"上次重量级野兽：{md}（{_rel_day(d.date())}）"
         if days_ago == 0:
-            return f"上次重量级野兽：{dates[-1]}（今天）"
+            return f"上次重量级野兽：{md}（今天）"
         if days_ago == 1:
-            return f"上次重量级野兽：{dates[-1]}（昨天）"
-        return f"上次重量级野兽：{dates[-1]}（{days_ago} 天前）"
+            return f"上次重量级野兽：{md}（昨天）"
+        return f"上次重量级野兽：{md}（{days_ago} 天前）"
     return "上次重量级野兽：暂无记录"
 
 
@@ -234,20 +235,7 @@ def _bob_cn_date(end_cn: dt.datetime) -> str:
 # 文案
 # ---------------------------------------------------------------------------
 
-def _fmt(t: dt.datetime) -> str:
-    return t.strftime("%m-%d %H:%M")
-
-
-def _disp_width(s: str) -> int:
-    """显示宽度：CJK/全角算 2，其余算 1（与 wclfmt 同一套口径）。"""
-    import unicodedata
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
-
-
-def _pad_to(s: str, width: int) -> str:
-    """按显示宽度右侧补全角空格到 width（全角空格不会被 MD 渲染吞掉）。"""
-    gap = width - _disp_width(s)
-    return s + "　" * max(0, gap) if gap > 0 else s
+_SEP = "──────────"  # 今天/明天两批之间的分隔线（box-drawing 字符，不是 MD 语法，各端都按原样显示）
 
 
 def _rel_day(d: dt.date) -> str:
@@ -262,36 +250,35 @@ def _rel_day(d: dt.date) -> str:
 
 
 def _window_status(start: dt.datetime, close: dt.datetime) -> str:
+    """窗口进行中给剩余时长，结束了给「已结束」；还没开始返回空串（时间行已写明几点开始）。"""
     now = _now_cn()
     if now < start:
-        return f"（{_rel_day(start.date())} 07:00 开始）"
+        return ""
     if now < close:
         hours = (close - now).total_seconds() / 3600
         if hours >= 1:
-            return f"（还剩约 {round(hours)} 小时）"
-        return f"（还剩约 {int(hours * 60)} 分钟）"
-    return ""
+            return f"还剩约 {round(hours)} 小时"
+        return f"还剩约 {int(hours * 60)} 分钟"
+    return "已结束"
 
 
-def _batch_block(pets: list[dict], header_suffix: str = "") -> list[str]:
-    """一批任务 -> 文案块（标题行 + 窗口行 + 任务行）。"""
-    end = pets[0]["end_cn"]
-    start, close = cn_window(end)
-    rel = _rel_day(start.date())
-    bob = next((p for p in pets if p["quest_id"] == BOB_ID), None)
-    lines = []
-    if bob:
-        lines.append(f"**🔥 {BOB_CN}预警（国服{rel}）**{header_suffix}")
-    else:
-        lines.append(f"**🐾 宠物对战世界任务（国服{rel}）**{header_suffix}")
-    lines.append(f"可做时间：**{_fmt(start)} – {_fmt(close)}**（国服时间）{_window_status(start, close)}")
-    if bob:
-        lines.append("")
-        lines.append(f"「{BOB_CN}」在{BOB_ZONE}，{rel} 07:00 重置后可做！")
-    lines.append("")
-    lines.append(f"本批任务（{len(pets)} 个）：")
+def _day_block(pets: list[dict]) -> list[str]:
+    """一天的批次 -> 文案块：日期行、时间行、任务行。
+
+    版式约束：MD 渲染会吞掉连续半角空格，列与列之间用全角「｜」分隔而不是靠
+    空格对齐；任务名不加粗（整段都是粗体反而没有重点），只给重量级野兽加粗。
+    窗口恒为 07:00 起 24h，所以时间只写「7点」，不写完整时分。
+    """
+    start, close = cn_window(pets[0]["end_cn"])
+    status = _window_status(start, close)
+    lines = [
+        f"**{_rel_day(start.date())}**（{start.strftime('%m-%d')}）",
+        f"时间：{_rel_day(start.date())} 7点 → {_rel_day(close.date())} 7点"
+        + (f"（{status}）" if status else ""),
+    ]
     for p in pets:
-        lines.append(f"· **{p['name_cn']}**　{p['zone']}")
+        name = f"**{p['name_cn']}**" if p["quest_id"] == BOB_ID else p["name_cn"]
+        lines.append(f"· {name} ｜ {p['zone']}")
     return lines
 
 
@@ -310,13 +297,18 @@ def build_text(
     # 账本自动补记：数据源给出的最近一次野兽出现（含当前批次）
     if bob_last is not None:
         record_bob([_bob_cn_date(bob_last)])
-    lines = []
-    if today_pets:
-        lines += _batch_block(today_pets)
-        if tomorrow_pets:
-            lines.append("")
-    if tomorrow_pets:
-        lines += _batch_block(tomorrow_pets)
+    batches = [b for b in (today_pets, tomorrow_pets) if b]
+    # 总标题只出一次：哪天有野兽就直接点出来（预警横幅），否则是普通日报
+    bob_days = [
+        _rel_day(cn_window(b[0]["end_cn"])[0].date())
+        for b in batches if any(p["quest_id"] == BOB_ID for p in b)
+    ]
+    lines = [f"**🔥 {'、'.join(bob_days)}有{BOB_CN}**" if bob_days else "**🐾 宠物对战世界任务**"]
+    for i, b in enumerate(batches):
+        lines.append("")
+        if i:
+            lines += [_SEP, ""]
+        lines += _day_block(b)
     lines.append("")
     lines.append(bob_last_text())
     return "\n".join(lines)
