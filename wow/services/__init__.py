@@ -11,6 +11,7 @@ from . import (  # noqa: F401
     misc,
     news,
     nga,
+    prices,
     reset,
     wclfmt,
 )

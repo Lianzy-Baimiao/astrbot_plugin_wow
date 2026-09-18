@@ -54,6 +54,41 @@
 同一个文件（说明曾发生覆盖），该记录会自动作废以便重抓——不需要手动删记录文件。
 仍未收录时可发 `处罚名单更新 强制` 忽略记录全量重抓。
 
+### 物价数据怎么来（本地导出 → 上传）
+
+国服拍卖行**没有可用的线上数据源**：暴雪官方 API 的 CN region 只开放了 WoW Token
+索引，拍卖行接口不在 CN 名单里；bnade.com 已经不是魔兽站点了。所以物价走「本机
+导出 → 上传云端」这条路，数据来自你自己的 Auctionator 扫描记录。
+
+在**装了游戏的机器**上跑：
+
+```bash
+python tools/export_prices.py
+```
+
+脚本从 `WTF/Account/*/SavedVariables/Auctionator.lua` 里解出价格库，产出
+`prices.json`（约 3 万条 / 2MB），把它放到云服务器的
+`data/plugin_data/astrbot_plugin_wow/prices.json` 即可，插件会按文件 mtime 自动重载。
+
+常用参数：`--realm 白银之手` 指定服务器、`-o 路径` 指定输出、`--refresh-names`
+强制更新物品名表。
+
+原理与注意点：
+
+- Auctionator 在 `PLAYER_LOGOUT` 时把每个服务器的价格库 **CBOR 序列化**成一个字符串
+  写进 SavedVariables（`__dbversion = 8`）。脚本内置极简 CBOR 解码器，只用标准库。
+- **要先让游戏完全退出**（登出才写盘），否则拿到的是上次登出时的旧数据。
+  回复里的「数据截止」= SavedVariables 的写盘时间，群友能自己判断新鲜度。
+- 只有**当前在玩的那个服务器**的数据可靠。其它服务器往往是旧 schema 被惰性 CBOR 化的
+  残留（一条最新价都没有），脚本会自动挑有最新价条目最多的那个。
+- 物品中文名在导出时就从 wago.tools 的 zhCN `ItemSparse` 全量表烤进 JSON（约 50MB，
+  缓存 7 天），**云端不联网、不查名字**。
+- 同名不同物品很常见：工艺品质三档共享名字、ID 相邻，回复里用 `①②③` 区分档位；
+  装备按装等分档，名字后面括号里是装等。
+- 价格是 Auctionator 最近一次扫到的**最低一口价**，数量是当天扫到的最大挂售量。
+  超过 7 天没更新的条目会标 `⚠ 旧价`。
+- 宠物（`p:` 键）按 speciesID 存，名字要另一张表，暂不导出。
+
 ### 宠物对战世界任务（重量级野兽）的预测原理
 
 todayinwow.com 只提供「当前激活」的世界任务（无未来排期）。军团再临宠物对战任务
@@ -87,7 +122,7 @@ todayinwow.com 只提供「当前激活」的世界任务（无未来排期）�
 
 ## 数据存储
 
-所有持久化数据存放在 `data/plugin_data/astrbot_plugin_wow/`：榜单名单/周报快照（board.db）、开箱积分（gacha.db）、日历缓存、新闻去重记录、物价表（`prices.xlsx`，将原 CustomDecode xlsx 命名为 prices.xlsx 放入）。
+所有持久化数据存放在 `data/plugin_data/astrbot_plugin_wow/`：榜单名单/周报快照（board.db）、开箱积分（gacha.db）、日历缓存、新闻去重记录、物价表（`prices.json`，见下）。
 
 ## 说明
 

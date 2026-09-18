@@ -174,51 +174,7 @@ async def talent_info(key: str) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------- 物价（本地 xlsx） ----------------------------
-
-def _cell(row: tuple, idx: int):
-    return row[idx] if len(row) > idx else None
-
-
-def _query_price_sync(items: list[str]) -> str:
-    """xlsx 读取是同步阻塞的，交给线程池跑（B=价格 C=名称 D=装等 E=数量）。"""
-    from openpyxl import load_workbook
-    from ..store import data_dir
-    xlsx = data_dir() / "prices.xlsx"
-    if not xlsx.exists():
-        return "物价表不存在，请将 CustomDecode xlsx 放到插件数据目录并命名为 prices.xlsx"
-    wb = load_workbook(xlsx, read_only=True, data_only=True)
-    try:
-        ws = wb.active
-        out = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            name = _cell(row, 2)
-            if name is None:
-                continue
-            for q in items:
-                q = q.strip()
-                if q and q in str(name):
-                    out.append((str(name), _cell(row, 1), _cell(row, 3), _cell(row, 4)))
-                    break
-            if len(out) >= 5:
-                break
-    finally:
-        wb.close()
-    if not out:
-        return "未找到相关物品，请检查物品名"
-    lines = [f"**查询 {len(items)} 种物品，结果如下**"]
-    for name, price, ilvl, qty in out:
-        try:
-            price_s = f"`{float(price):,}`"
-        except (TypeError, ValueError):
-            price_s = f"`{price}`" if price is not None else "`?`"
-        lines.append(f"- {name}：{price_s} 金（装等 {ilvl or '?'}，数量 {qty or '?'}）")
-    return "\n".join(lines)
-
-
-async def query_price(items: list[str]) -> str:
-    """查询本地物价表（CustomDecode xlsx）。"""
-    return await asyncio.to_thread(_query_price_sync, items)
+# 物价已迁到 services/prices.py（读 tools/export_prices.py 导出的 prices.json）
 
 
 # ---------------------------- 低保（每日运势） ----------------------------

@@ -82,6 +82,7 @@ from wow.services import misc as misc_svc
 from wow.services import news as news_svc
 from wow.services import nga as nga_svc
 from wow.services import petwq as petwq_svc
+from wow.services import prices as prices_svc
 from wow.services import punish as punish_svc
 try:
     from wow.services import punishfeed as punishfeed_svc
@@ -1464,17 +1465,17 @@ class WowPlugin(Star):
 
     @filter.regex(T_PRICE)
     async def price_cmd(self, event: AstrMessageEvent):
-        '''物价 物品1、物品2：查询本地物价表'''
+        '''物价 物品1、物品2：查询拍卖行价格（本地导出的 Auctionator 数据）'''
         if not self._limited("light", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
         raw = self._cap(T_PRICE, event).replace("，", "、")
         items = [i for i in raw.split("、") if i.strip()]
         if not items:
-            yield event.plain_result("用法：物价 丰饶药水、xxx")
+            yield event.plain_result("用法：物价 万能红宝石、不灭药水（支持部分匹配，多个用、分隔）")
             return
         try:
-            yield self._md(event, await misc_svc.query_price(items))
+            yield self._md(event, await prices_svc.query_price(items))
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"物价查询失败：{e}")
 
