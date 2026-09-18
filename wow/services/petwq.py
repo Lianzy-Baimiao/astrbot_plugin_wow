@@ -50,6 +50,9 @@ _cache_bob_last: dt.datetime | None = None
 _LEDGER = "petwq_bob_seen.json"
 # 推送状态：记录「哪天已推过明日预告」，避免轮询重复推送（跨重启保持）
 _PUSH_STATE = "petwq_push_day.json"
+# 轮询快照：记录上一轮拉到的明日批次 quest_id 集合，用于跨轮稳定判定
+# （源站逐条落库，需连续两轮一致才算完整，避免推送半成品）
+_POLL_STATE = "petwq_poll_snap.json"
 # v1.1.16~v1.1.20 的旧模型把国服窗口算成 end+1 日，账本日期整体晚了一天。
 # 2026-09-16 定稿模型（窗口 = end 所在日 07:00）后，首次读到旧账本时平移回来。
 _LEDGER_OLD_MODEL_UNTIL = "2026-09-16"
@@ -204,6 +207,18 @@ def mark_pushed(day: str) -> None:
     save_json(_PUSH_STATE, {"date": day})
 
 
+def _last_poll_snapshot(day: str) -> list[int]:
+    """返回上一轮拉到的明日 quest_id 列表；跨天（day 不匹配）视为无快照。"""
+    data = load_json(_POLL_STATE, {}) or {}
+    if data.get("day") != day:
+        return []
+    return list(data.get("ids") or [])
+
+
+def _save_poll_snapshot(day: str, ids: list[int]) -> None:
+    save_json(_POLL_STATE, {"day": day, "ids": sorted(ids)})
+
+
 def _bob_last_seen() -> dict:
     """读账本；v1.1.20 及之前按旧模型（晚一天）写入的日期平移一天。"""
     data = load_json(_LEDGER, {}) or {}
@@ -342,8 +357,15 @@ async def push_text(require_tomorrow: bool = False) -> str | None:
     """推送文案：预告国服**明天**的批次（附今天批次）；有重量级野兽时加预警。
 
     数据源（欧服）在北京 12:00 切批，但源站**放出新批有延迟**（实测 12:20 仍未
-    看到新批），所以定时任务从 12:00 起每 5 分钟轮询，本函数即轮询用的探针：
-    require_tomorrow=True 时，明天的批次还没就绪就返回 None（调用方稍后再试）。
+    看到新批），且新批是**逐条落库**、陆续写入的（不是一次性放出整批）。所以定时
+    任务从 12:00 起每 5 分钟轮询，本函数即轮询用的探针：require_tomorrow=True 时，
+    只有明日批次**已完整**才返回文案，否则 None（调用方稍后再试）。
+
+    「已完整」双判据（两条都满足才推）：
+    1. 跨轮稳定：本轮明日 quest_id 集合与上一轮完全一致（源站已停止追加）；
+    2. 数量下限：明日任务数 ≥ 今日任务数（今日批次已激活、早就完整，是可靠参照；
+       今日拉取失败时无参照，此条视为通过，只靠稳定性）。
+    没有这个判据，13:00 那种只落库 1 条的半成品会被当成完整推出去。
     """
     try:
         # force=True：轮询必须看源站最新状态，不能被 10 分钟缓存挡住
@@ -356,10 +378,26 @@ async def push_text(require_tomorrow: bool = False) -> str | None:
         return None
     if not tmr_pets:
         tmr_pets = None
-        if require_tomorrow:
-            return None  # 源站还没放出新批，等下一轮
     if not today_pets:
         today_pets = None
+
+    if require_tomorrow:
+        # 轮询探针：明日批次必须完整（稳定 + 数量达标）才放行
+        today_key = today_str()
+        cur_ids = sorted(p["quest_id"] for p in (tmr_pets or []))
+        prev_ids = _last_poll_snapshot(today_key)
+        _save_poll_snapshot(today_key, cur_ids)  # 先记录本轮，供下一轮比对
+        if not cur_ids:
+            return None  # 源站还没放出新批，等下一轮
+        stable = bool(prev_ids) and prev_ids == cur_ids
+        count_ok = (not today_pets) or len(tmr_pets or []) >= len(today_pets)
+        if not (stable and count_ok):
+            logger.info(
+                "[petwq] 明日批次未就绪（稳定=%s 数量达标=%s，本轮 %d 条），等下一轮",
+                stable, count_ok, len(cur_ids),
+            )
+            return None
+
     if not today_pets and not tmr_pets:
         return None
     return build_text(today_pets, tmr_pets, bob)
