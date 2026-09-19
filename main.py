@@ -493,7 +493,46 @@ class WowPlugin(Star):
     # markdown_output：总开关（默认开）
     # markdown_group_mode：all=所有会话 / whitelist=仅白名单群 / blacklist=黑名单群除外
     # 名单填 unified_msg_origin 或裸群号均可（走 _norm_umo 归一，私聊不受名单影响、随总开关）
+    def _plat_in_strip_list(self, plat: str) -> bool:
+        """平台是否命中「强制剥 MD」名单（平台分流，优先于总开关和群黑白名单）。
+
+        名单项可填适配器类型（aiocqhttp / qq_official）或平台实例名（如 napcat）。
+        名单为空 = 不按平台分流。平台段是实例 id 时（部分 AstrBot 版本的 umo 组成），
+        先映射到适配器类型名再判一次。
+        """
+        strip = [
+            str(x).strip()
+            for x in (self.config.get("markdown_strip_platforms") or [])
+            if str(x).strip()
+        ]
+        if not strip:
+            return False
+        seg = str(plat or "").split(":", 1)[0].strip()
+        if seg in strip:
+            return True
+        for get in (
+            lambda: self.context.platform_manager.platform_insts,
+            lambda: self.context.get_platform_insts(),
+        ):
+            try:
+                insts = get()
+            except Exception:  # noqa: BLE001
+                continue
+            for p in insts or []:
+                try:
+                    meta = p.meta()
+                except Exception:  # noqa: BLE001
+                    continue
+                if str(getattr(meta, "id", "") or "") == seg and str(
+                    getattr(meta, "name", "") or ""
+                ) in strip:
+                    return True
+        return False
+
     def md_enabled(self, event: AstrMessageEvent) -> bool:
+        # 平台分流优先：命中名单的平台（napcat/aiocqhttp）一律剥 MD，私聊也不例外
+        if self._plat_in_strip_list(event.get_platform_name()):
+            return False
         if not bool(self.config.get("markdown_output", True)):
             return False
         mode = str(self.config.get("markdown_group_mode", "all") or "all").strip().lower()
@@ -647,6 +686,9 @@ class WowPlugin(Star):
 
     def _md_for_umo(self, umo: str, text: str) -> str:
         """定时推送版的 MD 出口：按推送目标群的黑白名单决定是否剥 MD。"""
+        # 平台分流优先：直发不经过事件管线，markdown_killer 之类拦不到，只能在这里决定
+        if self._plat_in_strip_list(umo):
+            return strip_markdown(text)
         if not bool(self.config.get("markdown_output", True)):
             return strip_markdown(text)
         mode = str(self.config.get("markdown_group_mode", "all") or "all").strip().lower()
