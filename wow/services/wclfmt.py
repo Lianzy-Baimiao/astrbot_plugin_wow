@@ -36,7 +36,7 @@ def format_profile(p) -> str:
     lines = [f"**⚔ {name}**〈{realm}〉"]
     ilvl = f"{p.equipped_ilvl:.0f}" if p.equipped_ilvl > 0 else "暂无"
     score = f"{p.score:.2f}" if p.score > 0 else "暂无"
-    lines.append(f"{spec}{cls} · 装等 {ilvl} · 评分 **{score}**")
+    lines.append(f"{spec}{cls} · 装等 {ilvl} · WCL评分 **{score}**")
     lines.append(
         "世界 {} ｜ 国服 {} ｜ 服务器 {}".format(
             f"#{p.rank_world}" if p.rank_world > 0 else "暂无",

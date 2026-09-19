@@ -19,6 +19,7 @@ import math
 import re
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 # AstrBot 以 data.plugins.<name> 模块名加载 main.py，需显式将插件目录加入 sys.path。
@@ -166,7 +167,7 @@ _RE_CACHE: dict[str, re.Pattern] = {}
 
 HELP_TEXT = """魔兽世界插件指令（前缀 / 可省略）
 **—— 角色 / 战绩 ——**
-角色 <角色名> <服务器>      角色卡
+角色 <角色名> <服务器>      角色卡（同名旧档案自动整合）
 wcl <角色名> <服务器>       WCL 战绩
 **—— 大秘境 ——**
 词缀 / 本周词缀 / 下周词缀
@@ -238,16 +239,21 @@ def _clip(w: int, h: float, slack: int = 28) -> dict:
 
 # 各模板物理尺寸估算（与 HTML/CSS 版式一一对应；估算值只影响出图裁剪，宁大勿小）
 def _CLIP_CHARINFO(d: dict) -> dict:
-    # 与 charinfo.html 版式逐项对应（2026-08-26 版模板）：
+    # 与 charinfo.html 版式逐项对应（2026-09 版模板）：
     # 面板 = head 56（padding 18+14 + 标题 20px*1.2） + divider 1 + 内容 + 底 padding 18
     bars = sum(1 for v in (d.get("score_dps", 0), d.get("score_healer", 0), d.get("score_tank", 0)) if v > 0)
+    specs = d.get("spec_scores") or []  # 全专精都渲染（0 分灰显）
     ranks = len(d.get("rank_rows") or [])
     if d.get("has_mp"):
         score_h = 56 + 1 + 72  # score-line：padding-top 18 + 54px 总分
         if bars:
             score_h += 10 + bars * 34  # bars：margin-top 20，行 24 + gap 10
+        if specs:
+            score_h += 14 + 36 * math.ceil(len(specs) / 4)  # 专精 chips：margin-top 14，chip 行 25px 留余量，约 4 枚一行
         if ranks:
             score_h += 14 + ranks * 26  # rank：margin-top 14，行 padding 8 + 15px*1.2
+        if d.get("integrated"):
+            score_h += 18  # 整合说明小字：比单行「总评分」可能高出一行
         score_h += 18
     else:
         score_h = 56 + 1 + 43 + 18  # 空态：padding 18+6 + 16px 文本
@@ -801,17 +807,49 @@ class WowPlugin(Star):
 
     @filter.regex(T_CHARINFO)
     async def charinfo_cmd(self, event: AstrMessageEvent):
-        '''魔兽角色卡：角色 角色名 服务器名'''
+        '''魔兽角色卡：角色 角色名 服务器名 [旧档案ID或raider.io链接]'''
         if not self._limited("heavy", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
         parts = self._cap(T_CHARINFO, event).split()
-        if len(parts) < 2:
-            yield event.plain_result("用法：角色 角色名 服务器名\n例：角色 阿尔萨斯 影之哀伤")
+        if not parts:
+            yield event.plain_result(
+                "用法：角色 角色名 服务器名\n"
+                "例：角色 阿尔萨斯 影之哀伤\n"
+                "转子战网/删号重建的同名角色会自动整合旧档案成绩"
+            )
+            return
+        old_ref = None
+        url_name = url_realm = None
+        rest: list[str] = []
+        for tok in parts:
+            m = re.search(r"raider\.io/characters/cn/([a-z0-9\-]+)/([^\s/?#]+)", tok, re.I)
+            if m:
+                seg = urllib.parse.unquote(m.group(2))
+                m2 = re.fullmatch(r"(.+)-(\d{4,})", seg)
+                if m2:
+                    seg, old_ref = m2.group(1), m2.group(2)
+                url_name, url_realm = seg, m.group(1)
+            elif tok.isdigit():
+                old_ref = tok
+            else:
+                rest.append(tok)
+        if url_name and not rest:
+            name, realm = url_name, url_realm
+        elif len(rest) >= 2:
+            name, realm = rest[0], " ".join(rest[1:])
+        elif url_name and rest:
+            name, realm = url_name, rest[0]
+        else:
+            yield event.plain_result(
+                "用法：角色 角色名 服务器名 [旧档案ID]\n"
+                "例：角色 阿尔萨斯 影之哀伤"
+            )
             return
         try:
             data = await asyncio.wait_for(
-                charinfo_svc.build_char_card(parts[0], " ".join(parts[1:])), timeout=60
+                charinfo_svc.build_char_card(name, realm, old_ref=old_ref),
+                timeout=60,
             )
             for s in data["slots"]:
                 s["color"] = quality_color(s["quality"])

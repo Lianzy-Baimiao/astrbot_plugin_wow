@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
+from urllib.parse import quote
 
+from .. import store
 from ..net import fetch_json
 from ..wago import item_names, mplus_dungeon_names, raid_names
 
@@ -54,6 +57,24 @@ SPEC_CN = {
     "Affliction": "痛苦", "Demonology": "恶魔", "Destruction": "毁灭",
     "Havoc": "浩劫", "Vengeance": "复仇", "Devastation": "湮灭",
     "Preservation": "恩护", "Augmentation": "增辉",
+}
+
+# raider.io 赛季分里 spec_0..N 的下标按游戏天赋界面顺序排列
+# （武僧是织雾在前、踏风在后，与专精 ID 升序不同，已用多角色实测）
+CLASS_SPEC_ORDER = {
+    "Warrior": ["Arms", "Fury", "Protection"],
+    "Paladin": ["Holy", "Protection", "Retribution"],
+    "Hunter": ["Beast Mastery", "Marksmanship", "Survival"],
+    "Rogue": ["Assassination", "Outlaw", "Subtlety"],
+    "Priest": ["Discipline", "Holy", "Shadow"],
+    "Death Knight": ["Blood", "Frost", "Unholy"],
+    "Shaman": ["Elemental", "Enhancement", "Restoration"],
+    "Mage": ["Arcane", "Fire", "Frost"],
+    "Warlock": ["Affliction", "Demonology", "Destruction"],
+    "Monk": ["Brewmaster", "Mistweaver", "Windwalker"],
+    "Druid": ["Balance", "Feral", "Guardian", "Restoration"],
+    "Demon Hunter": ["Havoc", "Vengeance"],
+    "Evoker": ["Devastation", "Preservation", "Augmentation"],
 }
 
 FACTION_CN = {"alliance": "联盟", "horde": "部落"}
@@ -141,7 +162,111 @@ async def fetch_char(name: str, realm: str) -> dict:
     return p
 
 
-async def build_char_card(name: str, realm: str) -> dict:
+_INT_PROFILE_TTL = 1800
+_int_profile_cache: dict[str, tuple[dict, float]] = {}
+_search_cache: dict[str, tuple[list, float]] = {}
+
+
+async def _search_same_name_records(realm_slug: str, name: str) -> list[tuple[int, str]]:
+    """高级搜索（/cn/search 页面同款接口）按名字找同服所有档案。
+
+    转子战网/删号重建产生的冻结旧档案也在结果里，名字带 -旧档案ID 后缀
+    （如 神之宣告-8729964）。带 30 分钟缓存。
+    """
+    key = f"cn/{realm_slug}/{name}"
+    cached = _search_cache.get(key)
+    now = time.time()
+    if cached and now - cached[1] < _INT_PROFILE_TTL:
+        return cached[0]
+    url = ("https://raider.io/api/search-advanced?type=character"
+           f"&name[0][contains]={quote(name)}&timezone=UTC&sort[name]=desc&limit=100&offset=0")
+    try:
+        data = await fetch_json(url, timeout=30)
+    except Exception as e:  # noqa: BLE001
+        logger.info("同档搜索失败（%s）：%s", name, e)
+        return []
+    out: list[tuple[int, str]] = []
+    for m in (data or {}).get("matches") or []:
+        d = m.get("data") or {}
+        realm = d.get("realm") or {}
+        rslug = realm.get("slug") if isinstance(realm, dict) else None
+        nm = str(d.get("name") or "")
+        rid = d.get("id")
+        if not rid or rslug != realm_slug:
+            continue
+        if nm != name and not nm.startswith(f"{name}-"):
+            continue
+        out.append((int(rid), nm))
+    _search_cache[key] = (out, now)
+    return out
+
+
+async def _fetch_internal_profile(realm_slug: str, name_part: str, season: str) -> dict | None:
+    """raider.io 站内接口（非公开 /api/v1）：按「名字」或「名字-旧档案ID」取档案详情。
+
+    转子战网/删号重建后，旧成绩滞留在旧档案里；旧档案只能用 名字-ID 后缀路径访问
+    （公开 /api/v1 按 name+realm 只回活体档案，且无按 ID 查询）。带 30 分钟缓存。
+    """
+    key = f"cn/{realm_slug}/{name_part}/{season}"
+    cached = _int_profile_cache.get(key)
+    now = time.time()
+    if cached and now - cached[1] < _INT_PROFILE_TTL:
+        return cached[0]
+    url = f"https://raider.io/api/characters/cn/{realm_slug}/{quote(name_part)}?season={season}"
+    try:
+        data = await fetch_json(url, timeout=30)
+    except Exception as e:  # noqa: BLE001
+        logger.info("raider.io 档案详情获取失败（%s）：%s", name_part, e)
+        return None
+    _int_profile_cache[key] = (data, now)
+    return data
+
+
+def _runs_map(blk: dict) -> dict[int, float]:
+    """mythicPlusScores 某一块（all/dps/healer/tank/spec_N）的 runs → {zoneId: score}。"""
+    return {r["zoneId"]: float(r.get("score") or 0)
+            for r in ((blk or {}).get("runs") or []) if r.get("zoneId") is not None}
+
+
+def _merge_records(spec_names: list[dict], live_ms: dict,
+                   old_mss: list[tuple[str, dict]], live_all: float) -> dict | None:
+    """合并同一角色的多条 raider.io 档案（转子战网/删号重建后旧成绩滞留旧档案）。
+
+    两条档案的 mythicPlusScores 同构（all/dps/healer/tank/spec_0..N 的 runs 按
+    zoneId 给分），逐副本取各档案较高者即为整合口径——总分、角色条、专精行全部
+    出自 raider.io 自身数据。没有旧档案或合并不涨分时返回 None。
+    """
+    live_total = _runs_map(live_ms.get("all"))
+    merged_total = dict(live_total)
+    merged_roles = {r: _runs_map(live_ms.get(r)) for r in ("dps", "healer", "tank")}
+    merged_specs = [_runs_map(live_ms.get(f"spec_{i}")) for i in range(len(spec_names))]
+    for _oid, old_ms in old_mss:
+        for zid, sc in _runs_map(old_ms.get("all")).items():
+            if sc > merged_total.get(zid, 0):
+                merged_total[zid] = sc
+        for role, m in merged_roles.items():
+            for zid, sc in _runs_map(old_ms.get(role)).items():
+                if sc > m.get(zid, 0):
+                    m[zid] = sc
+        for i, m in enumerate(merged_specs):
+            for zid, sc in _runs_map(old_ms.get(f"spec_{i}")).items():
+                if sc > m.get(zid, 0):
+                    m[zid] = sc
+    total = sum(merged_total.values())
+    if total <= live_all + 1:
+        return None
+    return {
+        "total": total,
+        "extra_count": sum(1 for zid in merged_total if zid not in live_total),
+        "role_scores": tuple(sum(m.values()) for m in merged_roles.values()),
+        "spec_scores": [
+            {**spec_names[i], "score": sum(merged_specs[i].values())}
+            for i in range(len(spec_names))
+        ],
+    }
+
+
+async def build_char_card(name: str, realm: str, old_ref: str | None = None) -> dict:
     """组装角色卡渲染数据（布局与原 ZeroBot 版一致）。"""
     p = await fetch_char(name, realm)
     gear = p.get("gear") or {}
@@ -192,6 +317,64 @@ async def build_char_card(name: str, realm: str) -> dict:
     has_mp = score_all > 0 or any(v > 0 for v in (score_dps, score_healer, score_tank))
     score_color = ((season.get("segments") or {}).get("all") or {}).get("color", "") or "#FFC878"
 
+    # 分专精分数（下标含义见 CLASS_SPEC_ORDER；en 保留给映射记录）
+    cls_name = p.get("class", "")
+    spec_names = [{"name": SPEC_CN.get(en, en), "en": en}
+                  for en in CLASS_SPEC_ORDER.get(cls_name, [])]
+    spec_scores = [
+        {**spec_names[i], "score": float(cur_scores.get(f"spec_{i}", 0) or 0)}
+        for i in range(len(spec_names))
+    ]
+
+    # 整合同名旧档案：转子战网/删号重建后旧成绩滞留在旧档案。旧档案由高级搜索自动
+    # 发现（冻结档案名字带 -旧ID 后缀）；也可手动带 旧档案ID/链接 指定。发现过即记忆。
+    integrated = None
+    season_slug = season.get("season", "")
+    realm_slug = (p.get("realm") or "").lower().replace(" ", "-")
+    char_name = p.get("name", "")
+    link_key = f"cn/{realm_slug}/{char_name}"
+    try:
+        links = store.load_json("char_links.json", {}) or {}
+    except Exception:  # noqa: BLE001
+        links = {}
+    old_ids = {str(x) for x in (links.get(link_key) or [])}
+    if old_ref:
+        old_ids.add(str(old_ref))
+    if season_slug:
+        live_detail = await _fetch_internal_profile(realm_slug, char_name, season_slug)
+        live_det = ((live_detail or {}).get("characterDetails") or {}).get("character") or {}
+        live_ms = ((live_detail or {}).get("characterMythicPlusProgress") or {}).get("mythicPlusScores") or {}
+        for rid, _nm in await _search_same_name_records(realm_slug, char_name):
+            if str(rid) != str(live_det.get("id")):
+                old_ids.add(str(rid))
+        old_mss: list[tuple[str, dict]] = []
+        for oid in sorted(old_ids):
+            detail = await _fetch_internal_profile(realm_slug, f"{char_name}-{oid}", season_slug)
+            old_det = ((detail or {}).get("characterDetails") or {}).get("character") or {}
+            old_ms = ((detail or {}).get("characterMythicPlusProgress") or {}).get("mythicPlusScores")
+            if not old_ms:
+                continue
+            # 名字被他人复用过的旧档案（职业不同）不并
+            ocls = old_det.get("class")
+            ocls = ocls.get("name") if isinstance(ocls, dict) else ocls
+            if ocls and ocls != p.get("class", ""):
+                logger.info("旧档案 %s 职业不同（%s），跳过整合", oid, ocls)
+                continue
+            old_mss.append((oid, old_ms))
+        if old_mss:
+            integrated = _merge_records(spec_names, live_ms, old_mss, score_all)
+    if integrated:
+        integrated["old_ids"] = [oid for oid, _ in old_mss]
+        want = sorted(old_ids)
+        if links.get(link_key) != want:
+            links[link_key] = want
+            try:
+                store.save_json("char_links.json", links)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("旧档案映射保存失败：%s", e)
+        score_dps, score_healer, score_tank = integrated["role_scores"]
+        spec_scores = integrated["spec_scores"]
+
     # 排名行（综合/职业/角色）
     ranks = p.get("mythic_plus_ranks") or {}
     rank_rows = []
@@ -206,7 +389,6 @@ async def build_char_card(name: str, realm: str) -> dict:
     if _has_rank("overall"):
         r = ranks["overall"]
         rank_rows.append(("综合", _rank_line(r.get("world"), r.get("region"), r.get("realm"))))
-    cls_name = p.get("class", "")
     if _has_rank("class"):
         r = ranks["class"]
         rank_rows.append((CLASS_CN_EN.get(cls_name, cls_name), _rank_line(r.get("world"), r.get("region"), r.get("realm"))))
@@ -286,6 +468,8 @@ async def build_char_card(name: str, realm: str) -> dict:
         "score_dps": score_dps,
         "score_healer": score_healer,
         "score_tank": score_tank,
+        "spec_scores": spec_scores,
+        "integrated": integrated,
         "score_color": score_color,
         "season_cn": _season_cn(season.get("season", "")),
         "rank_rows": rank_rows,

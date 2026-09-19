@@ -55,3 +55,59 @@
 - EU/NA 实测同一天同一批；国服轮换偏移一天，按用户国服经验实现，游戏内抽查为准。
 - wowhead CN 抓名走重定向 slug，约 15 连发后 403，间隔 6-10s + 多轮退避可拿全。
 - 推送定时 16:05（用户指定）；此时拉到的批次 = 国服明天的，文案相对日（今天/明天/后天）动态生成。
+
+## v1.1.30 — 角色卡评分标注来源 + 分专精分数（2026-09-19）
+- [x] 起因：神之宣告〈烈焰峰〉角色卡 2069 vs wcl 卡 3151.11，用户质疑分数对不上
+- [x] 排查结论（重要，非插件 bug）：WCL 与 raider.io **单局算分完全同源**（5 本 +15 的单局分逐位一致），
+      分歧全在档案归属——该角色同名同服有两条 raider.io 记录（删号/腾名后新角色占用旧名）：
+      旧档案 ID 8729964（邪DK，8 月末 M+ 2920、8/8H），活体档案 308739256（血DK，2069、5/8M）。
+      WCL 按「名字+服务器」记账跨身份累积 8 本成绩 → 3151.11；raider.io 活体档案只有新身份
+      9 月起的 5 本 → 2068.7。缺的 3 本（ToSF+10、Vale+12、Voidscar+12）在旧身份名下
+- [x] wcl 卡「评分」→「WCL评分」，角色卡面板「大秘境评分」→「大秘境评分（Raider.IO）」，消除两套数字歧义
+- [x] charinfo.py：CLASS_SPEC_ORDER 表 + spec_scores（raider.io 返回里的 spec_0..3 原本被丢弃）
+- [x] charinfo.html：评分面板新增「专精」chip 行（只显 >0），总分/角色条/单局分改一位小数
+- [x] main.py：_CLIP_CHARINFO 同步专精行高度（实测 dk 1562/est 1566、双修武僧 1625/est 1626，均覆盖）
+- [x] spec_N 下标顺序实测：按**游戏天赋界面顺序**而非专精 ID 升序——武僧 spec_1=织雾（3 个酒仙+织雾
+      双修样本一致）、德鲁伊 spec_3=恢复、DK spec_2=邪恶；全部 13 职业表按此口径
+- [x] 渲染冒烟：Jinja2 本地渲染 + playwright 截图目检（单专精 DK / 双修武僧两张卡）
+- [ ] 全 handler 桩冒烟 + 真实 t2i 端点出图（下轮部署前跑一遍即可）
+
+### 补充：转移前成绩整合（用户确认根因为转子战网，同日）
+- [x] raider.io 无按 ID 取旧档案的公开接口（`id=`/`characterId=` 均 400），整合源用 WCL：
+      按「名字+服务器」记账跨身份留存，单局算分与 raider.io 同源（已实测逐位一致）
+- [x] charinfo.py：fetch_char 增拉 mythic_plus_best_runs（逐本最佳，合计≈官方 all）；
+      _integrate_transfer_history 逐本取两边较高者，extra_count≥1 且总分>官方+1 才生效
+- [x] 角色卡大数字显示整合分，注明「总评分 · 含转移前 N 本（Raider.IO 当前档案 xxx）」；
+      角色/专精明细与排名仍用官方档案（排名语义只属于活体档案）
+- [x] main.py：charinfo_cmd 传 self._wcl；估算器整合行 +18（实测 est 1584 vs 实际 1562）
+- [x] 三路径实测：DK+凭证 整合 3151.2/转移前 3 本；无转移武僧 None；无凭证 None
+### 补充2：整合覆盖整个评分面板（用户实测反馈，同日）
+- [x] 用户实测发现整合只替换了总分，专精行/角色条仍是活体档案数据 → 已全线切整合口径：
+      角色条 = max(raider.io 角色分, WCL allStars 按角色归并)；专精行 = max(spec_N, allStars)
+- [x] 专精行改为全专精展示（0 分灰显 ci-spec-zero），鲜血 0 不再隐藏，卡片自解释归属
+- [x] 归属实证：每条战绩原始字段 spec=Unholy(id 252, role dps)、tank=0 → 2068.7 是邪恶的，
+      不是鲜血（官网横幅只是「当前专精+总分」并排展示，非归属）；WCL 转移前另有鲜血 331.2
+- [x] run 对象的 spec.ordinal 就是 spec_N 下标官方定义（Unholy=2 与映射表吻合）
+- [x] 重新打包校验通过（失败项 0），_smoke 归档 v1.1.30
+### 补充3：整合改为纯 raider.io 双档案合并（用户否决 WCL 方案，同日）
+- [x] 用户明确：整合对象是两条 raider.io 档案，不是 WCL 数据 → 撤掉 charinfo 的 WCL 依赖
+- [x] 发现站内内部接口（浏览器抓包）：`/api/characters/cn/{realm}/{名字}-{旧ID}?season=...`
+      可取冻结旧档案全量数据；`mythicPlusScores` 有 all/dps/healer/tank/spec_0..3 五套
+      逐本 runs（zoneId+score），两档案同构 → 逐 zoneId 取较高者合并，全部 raider.io 口径
+- [x] 旧档案 ID 无法自动发现（search 只索引在玩角色、persona_id 均 0、两档案 JSON 无互引）
+      → 命令支持 `角色 名字 服务器 [旧档案ID或raider.io链接]`；整合一次写入 char_links.json，
+      之后普通查询自动带上（实测：第二次普通查询自动整合生效）
+- [x] 归属澄清：2068.7 是邪恶的（每条战绩 spec=Unholy/role=dps，tank=0），鲜血是当前专精
+      但本赛季无成绩；旧档案另有血DK 347.7（spec_0），比 WCL allStars 显示的 331.2 更准
+- [x] 合并结果（神之宣告）：总分 3155.7（旧档案含 ToSF +11=336.5，WCL 口径 3151.2 少算了它）、
+      输出 3155.7、坦克 347.7、专精 鲜血 347.7/冰霜 0/邪恶 3155.7
+- [x] spec_N 下标顺序再获官方佐证：内部接口 spec_0=鲜血/坦克、spec_2=邪恶，与 CLASS_SPEC_ORDER 一致
+- [x] 重新打包校验通过，_smoke 归档
+### 补充4：旧档案自动发现（用户提供 /cn/search 线索，同日）
+- [x] 用户发现 raider.io/cn/search 高级搜索能同时搜出 2 条档案 → 自动发现有解
+- [x] 抓包定位接口：/api/search-advanced?type=character&name[0][contains]=名&limit=100&offset=0
+      返回含冻结旧档案（名字带 -旧ID 后缀，如 神之宣告-8729964）
+- [x] charinfo.py：_search_same_name_records（同服+精确名/后缀名过滤，30 分钟缓存）；
+      普通查询即自动发现旧档案并整合，手动带 旧档案ID/链接 仍作为补充
+- [x] 防误并护栏：旧档案职业与活体不同则跳过（名字被他人复用的场景）
+- [x] 实测：普通查询自动出整合卡 3155.7；无旧档案角色不受影响；打包校验通过
