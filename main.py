@@ -77,6 +77,7 @@ from wow.services import affix as affix_svc
 from wow.services import bis as bis_svc
 from wow.services import board as board_svc
 from wow.services import charinfo as charinfo_svc
+from wow.services import festival as festival_svc
 from wow.services import gacha as gacha_svc
 from wow.services import guild as guild_svc
 from wow.services import misc as misc_svc
@@ -161,6 +162,8 @@ T_PUNISH_SYNC = r"^处罚名单更新[\s:：]*(强制|重建)?$"
 T_PUNISH_NOTIFY = r"^处罚通报推送[\s:：]*(开|关|状态|测试)?$"
 T_PET = r"^宠物$"
 T_PET_PUSH = r"^宠物推送[\s:：]*(开|关|状态|测试)?$"
+T_FESTIVAL = r"^节日$"
+T_FESTIVAL_PUSH = r"^节日推送[\s:：]*(开|关|状态|测试)?$"
 T_HELP = r"^魔兽帮助$"
 
 _RE_CACHE: dict[str, re.Pattern] = {}
@@ -192,6 +195,8 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 魔兽新闻 / 魔兽新闻改
 魔兽新闻推送 开/关/状态/测试   每5分钟检查，有更新自动推送本群（开/关/测试需管理员）
 日历 [关键词] / 事件 / <版本>事件
+节日                         国服当前节日/活动（美酒节、增益周等）
+节日推送 开/关/状态/测试      每天定时播报当前节日活动（开/关/测试需管理员）
 开箱 [数量] / 红手榜 [数量]
 语录 [BOSS名] / 吃什么 / 低保 / 物价 <物品1、物品2>
 处罚 <角色名> [服务器]        查询官方处罚名单（按赛季列出）
@@ -1703,6 +1708,44 @@ class WowPlugin(Star):
             return [event.plain_result(f"查询失败：{e}")]
 
     # ------------------------------------------------------------------
+    # 节日通告（festival）
+    # ------------------------------------------------------------------
+
+    @filter.regex(T_FESTIVAL)
+    async def festival_cmd(self, event: AstrMessageEvent):
+        '''节日：国服当前节日/活动（美酒节、增益周、暗月马戏团等，真节日加🎉）'''
+        if not self._limited("default", self._group_key(event)):
+            yield event.plain_result("查询太频繁，请稍后再试")
+            return
+        try:
+            yield self._md(event, await festival_svc.query_text())
+        except Exception as e:  # noqa: BLE001
+            yield event.plain_result(f"查询失败：{e}")
+
+    @filter.regex(T_FESTIVAL_PUSH)
+    async def festival_push_cmd(self, event: AstrMessageEvent):
+        '''节日推送 开/关/状态/测试：本群开启后每天定时播报当前节日活动（开/关/测试需管理员）'''
+        def status(on: bool) -> str:
+            t = str(self.config.get("festival_push_time", "07:05") or "07:05")
+            return (f"本群节日通告推送：{'已开启' if on else '已关闭'}\n"
+                    f"每天 {t} 播报国服当前节日/活动（美酒节、增益周等，真节日加🎉），空档日也发")
+        async for r in self._push_toggle_cmd(
+            event, self._cap(T_FESTIVAL_PUSH, event), "festival_push_groups", "节日推送",
+            on_msg="已开启本群节日通告（每天定时播报当前节日活动，空档日也发）",
+            off_msg="已关闭本群节日通告",
+            status_fn=status,
+            test_fn=lambda ev: self._festival_test(ev),
+        ):
+            yield r
+
+    async def _festival_test(self, event: AstrMessageEvent) -> list:
+        # 测试 = 当场跑一次完整推送（与定时推送同一份文案口径）
+        try:
+            return [self._md(event, "**[测试]**\n" + await festival_svc.push_text())]
+        except Exception as e:  # noqa: BLE001
+            return [event.plain_result(f"查询失败：{e}")]
+
+    # ------------------------------------------------------------------
     # NGA 帖子（ngajiexi）
     # ------------------------------------------------------------------
 
@@ -1783,6 +1826,21 @@ class WowPlugin(Star):
                             logger.warning("重置推送失败 %s: %s", umo, e)
                 except Exception as e:  # noqa: BLE001
                     logger.warning("重置提醒生成失败: %s", e)
+
+        # 节日通告（每天 festival_push_time，默认 07:05）
+        fest_groups = self._norm_umo_list("festival_push_groups")  # 归一：裸群号自动补全 umo
+        if fest_groups:
+            fh, fm = reset_svc.parse_reset_time(str(cfg.get("festival_push_time", "07:05")))
+            if now.tm_hour == fh and now.tm_min == fm and self._fire_once("festival", now):
+                try:
+                    text = await festival_svc.push_text()  # 照常发：空档日也返回文案
+                    for umo in fest_groups:
+                        try:
+                            await self._send_text_to(umo, text)
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning("节日通告推送失败 %s: %s", umo, e)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("节日通告生成失败: %s", e)
 
         # 周报（weekly_report_day，1=周一 ... 7=周日，20:00）
         weekly_groups = self._norm_umo_list("weekly_report_groups")  # 归一：裸群号自动补全 umo

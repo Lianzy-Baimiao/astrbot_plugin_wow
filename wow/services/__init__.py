@@ -6,6 +6,7 @@ from . import (  # noqa: F401
     bis,
     board,
     charinfo,
+    festival,
     gacha,
     guild,
     misc,

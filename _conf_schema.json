@@ -78,6 +78,17 @@
     "default": [],
     "hint": "中午 12:00 起每 5 分钟轮询欧服切批（源站放出新批有延迟），拿到国服明天 07:00 开始的批次即推（附今天批次），出现重量级野兽时加预警。也可在群内用「宠物推送 开/关」管理"
   },
+  "festival_push_groups": {
+    "description": "节日通告每日推送的群（unified_msg_origin 或群号，可多个）",
+    "type": "list",
+    "default": [],
+    "hint": "每天按下面的时间播报国服当前节日/活动（美酒节、万圣节、增益周、暗月马戏团等，真节日加🎉），空档日也发。数据源为「下周大事件」（国服口径，每周三左右更新）。也可在群内用「节日推送 开/关」管理"
+  },
+  "festival_push_time": {
+    "description": "节日通告推送时间（小时:分钟，每天）",
+    "type": "string",
+    "default": "07:05"
+  },
   "markdown_strip_platforms": {
     "description": "强制剥 Markdown 的平台（按平台分流，优先于总开关和群名单）",
     "type": "list",
