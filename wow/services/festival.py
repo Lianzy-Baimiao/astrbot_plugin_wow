@@ -40,7 +40,9 @@ DOC_REFERER = "https://flowus.cn/"
 CN_TZ = dt.timezone(dt.timedelta(hours=8))  # 国服 = 北京时间
 
 _CACHE_FILE = "festival_doc.json"     # 落盘缓存（原始文档）
-_CACHE_TTL = 3600                     # 1 小时内存/磁盘缓存
+# 源站每周才更新一次，缓存放宽到 6 小时：手动查询大多命中缓存，既少抓一次、也不易撞限流。
+# 每天 07:05 定时推送用 force=True 强抓一次拿最新（失败则回落缓存）。
+_CACHE_TTL = 21600                    # 6 小时内存/磁盘缓存
 
 # 内存缓存
 _cache_doc: dict | None = None
@@ -61,19 +63,22 @@ def _now_cn() -> dt.datetime:
 
 
 # ---------------------------------------------------------------------------
-# 抓取（1 小时内存缓存 + 落盘，失败回落磁盘）
+# 抓取（6 小时内存缓存 + 落盘，失败/限流回落缓存）
 # ---------------------------------------------------------------------------
 
+def _valid_doc(d) -> bool:
+    return isinstance(d, dict) and bool(d.get("blocks"))
+
+
 async def _fetch_doc(force: bool = False) -> dict:
-    """抓取整篇文档的 blocks 字典。带 1 小时缓存，抓取失败回落磁盘缓存。"""
+    """抓取整篇文档的 blocks 字典。6 小时缓存；抓取失败（含限流 429）依次回落磁盘、过期内存缓存。"""
     global _cache_doc, _cache_at
     now = time.time()
     if not force and _cache_doc is not None and now - _cache_at < _CACHE_TTL:
         return _cache_doc
 
     disk = load_json(_CACHE_FILE, None)
-    if not force and disk and isinstance(disk, dict) and disk.get("blocks") \
-            and now - float(disk.get("at", 0)) < _CACHE_TTL:
+    if not force and _valid_doc(disk) and now - float(disk.get("at", 0)) < _CACHE_TTL:
         _cache_doc, _cache_at = disk, float(disk.get("at", 0))
         return _cache_doc
 
@@ -87,10 +92,13 @@ async def _fetch_doc(force: bool = False) -> dict:
         save_json(_CACHE_FILE, doc)
         return doc
     except Exception as e:  # noqa: BLE001
-        logger.warning("[festival] 抓取失败: %s；尝试回落磁盘缓存", e)
-        if disk and isinstance(disk, dict) and disk.get("blocks"):
-            _cache_doc, _cache_at = disk, float(disk.get("at", 0))
-            return _cache_doc
+        # 抓取失败（网络/限流等）：用尽量新的缓存兜底——磁盘 vs 内存取较新的那份
+        logger.warning("[festival] 抓取失败: %s；回落缓存", e)
+        candidates = [c for c in (disk, _cache_doc) if _valid_doc(c)]
+        if candidates:
+            best = max(candidates, key=lambda c: float(c.get("at", 0)))
+            _cache_doc, _cache_at = best, float(best.get("at", 0))
+            return best
         raise
 
 
@@ -231,6 +239,89 @@ def _parse_events(week: dict, blocks: dict, base: dt.date) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# 单个节日的历史周期（上次 / 进行中 / 下次）
+# ---------------------------------------------------------------------------
+# 文档的周单元按文档顺序**从新到旧连续排列**（实测只有 12→1 月的正常跨年跳变，
+# 无多时间线交错）。据此给每个周单元推出**绝对起始日**：锚定当前周（subNodes[0]）的
+# 年份，往后（更旧）遍历，月份较上一周「跳升」即回退一年。再用每周的绝对起始日做
+# 锚点推断该周内节日日期的年份，就能把全库 ~2 年历史里同名节日的每次出现还原成绝对日期。
+
+def _week_start_dates(units: list[tuple[str, dict]], today: dt.date) -> list[dt.date]:
+    """每个周单元的绝对起始日（新→旧连续，跨年回退）。"""
+    starts: list[dt.date] = []
+    if not units:
+        return starts
+    m0 = _WK_RE.match(units[0][0])
+    year = _infer_year(int(m0.group(1)), today)
+    prev_m: int | None = None
+    for title, _ in units:
+        m = _WK_RE.match(title)
+        sm, sd = int(m.group(1)), int(m.group(2))
+        if prev_m is not None and sm > prev_m:  # 往旧走月份跳升 = 越过年界
+            year -= 1
+        starts.append(dt.date(year, sm, sd))
+        prev_m = sm
+    return starts
+
+
+def _merge_occurrences(
+    occ: list[tuple[dt.date, dt.date]], gap_days: int = 12
+) -> list[tuple[dt.date, dt.date]]:
+    """把同一次节日在相邻周里被重复登记的日期段合并（起始日相差 ≤gap 视作同一次，取并集）。"""
+    out: list[tuple[dt.date, dt.date]] = []
+    for s, e in sorted(set(occ)):
+        if out and abs((s - out[-1][0]).days) <= gap_days:
+            ps, pe = out[-1]
+            out[-1] = (min(ps, s), max(pe, e))
+        else:
+            out.append((s, e))
+    return out
+
+
+def _festival_occurrences(
+    name: str, blocks: dict, today: dt.date
+) -> list[tuple[dt.date, dt.date]]:
+    """全库历史里 name 这个节日的所有出现（绝对日期，去重合并，按时间升序）。"""
+    units = _week_units(blocks)
+    starts = _week_start_dates(units, today)
+    occ: list[tuple[dt.date, dt.date]] = []
+    for (title, body), wstart in zip(units, starts):
+        for line in _week_children_lines(body, blocks):
+            for m in _EVT_RE.finditer(line):
+                if m.group(1).strip() != name:
+                    continue
+                sm, sd = int(m.group(2)), int(m.group(3))
+                sy = _infer_year(sm, wstart)  # 用本周绝对起始日做锚，避免跨年错配
+                start = dt.date(sy, sm, sd)
+                if m.group(4):
+                    em, ed = int(m.group(4)), int(m.group(5))
+                    ey = sy + 1 if em < sm else sy
+                    end = dt.date(ey, em, ed)
+                else:
+                    end = start
+                occ.append((start, end))
+    return _merge_occurrences(occ)
+
+
+def _resolve_festival_name(query: str, blocks: dict) -> str | None:
+    """把用户输入对到真节日库里的规范名：精确 > 去掉「节」等宽松包含。"""
+    q = (query or "").strip().strip("《》").replace("节日", "").strip()
+    if not q:
+        return None
+    holidays = _holiday_set(blocks)
+    if q in holidays:
+        return q
+    # 宽松：库名包含输入，或输入包含库名（如「美酒」↔「美酒节」、「啤酒节」不匹配）
+    cands = [h for h in holidays if q in h or h in q]
+    if len(cands) == 1:
+        return cands[0]
+    # 多个候选时优先取最短（最接近整词）
+    if cands:
+        return min(cands, key=len)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 状态判定与文案
 # ---------------------------------------------------------------------------
 
@@ -297,6 +388,68 @@ def _build_text(events: list[dict], today: dt.date) -> str:
     return "\n".join(lines)
 
 
+def _fmt_occ(s: dt.date, e: dt.date) -> str:
+    """一次出现的日期段：同年省略重复年份。"""
+    if s == e:
+        return f"{s:%Y-%m-%d}"
+    if s.year == e.year:
+        return f"{s:%Y-%m-%d} → {e:%m-%d}"
+    return f"{s:%Y-%m-%d} → {e:%Y-%m-%d}"
+
+
+def _plus_one_year(d: dt.date) -> dt.date:
+    """同月同日 +1 年（2/29 落到 3/1）。多数魔兽节日是固定日历日，据此推下次。"""
+    try:
+        return d.replace(year=d.year + 1)
+    except ValueError:  # 2/29
+        return dt.date(d.year + 1, 3, 1)
+
+
+def _build_cycle_text(name: str, occ: list[tuple[dt.date, dt.date]], today: dt.date) -> str:
+    """单个节日的周期文案：进行中 / 上次 / 下次 + 历年记录。
+
+    下次：数据里已有未来段就用真值；否则按「最近一次 +1 年（同月日）」推算——多数魔兽
+    节日锚在固定日历日（如美酒节 9/20、海盗日 9/19），同月日 +1 年即为下次。
+    """
+    if not occ:
+        return f"没查到「{name}」的历史记录（数据源只整理了近两年的国服大事件）"
+
+    current = next((o for o in occ if o[0] <= today <= o[1]), None)
+    past = [o for o in occ if o[1] < today]
+    future = [o for o in occ if o[0] > today]
+
+    lines = [f"**🎉 {name}**"]
+
+    if current:
+        left = (current[1] - today).days
+        tail = f"还剩 {left} 天" if left >= 1 else "今天最后一天"
+        lines.append(f"进行中：{_fmt_occ(*current)}（{tail}）")
+
+    if past:
+        lines.append(f"上次：{_fmt_occ(*past[-1])}")
+
+    if future:
+        # 数据里已有远期日期 = 真值，不加「预计」
+        lines.append(f"下次：{_fmt_occ(*future[0])}")
+    else:
+        # 数据没有远期日期，按最近一次（含进行中）同月日 +1 年推算 = 预计
+        base = current or (past[-1] if past else None)
+        if base:
+            ns = _plus_one_year(base[0])
+            ne = ns + dt.timedelta(days=(base[1] - base[0]).days)
+            lines.append(f"下次：预计 {_fmt_occ(ns, ne)}")
+
+    # 历年记录（最多列近 5 次，倒序）
+    if occ:
+        lines.append("")
+        lines.append("历年时间：")
+        for s, e in occ[::-1][:5]:
+            flag = "（进行中）" if current and (s, e) == current else ""
+            lines.append(f"· {_fmt_occ(s, e)}{flag}")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # 对外接口
 # ---------------------------------------------------------------------------
@@ -330,3 +483,23 @@ async def push_text() -> str:
         logger.warning("[festival] 推送生成失败: %s", e)
         return "暂时拉不到节日活动数据，请稍后再试"
     return _build_text(events, today)
+
+
+async def cycle_text(query: str) -> str:
+    """查询单个节日的周期：上次 / 进行中 / 下次 + 历年时间。
+
+    query 是用户输入的节日名（如「美酒节」「美酒」）。对不上真节日库时给出可选清单。
+    """
+    try:
+        doc = await _fetch_doc(force=False)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[festival] 周期查询失败: %s", e)
+        return "暂时拉不到节日活动数据，请稍后再试"
+    blocks = doc["blocks"]
+    name = _resolve_festival_name(query, blocks)
+    if name is None:
+        names = "、".join(sorted(_holiday_set(blocks)))
+        return f"没找到「{query.strip()}」这个节日。可查的节日有：\n{names}"
+    today = _now_cn().date()
+    occ = _festival_occurrences(name, blocks, today)
+    return _build_cycle_text(name, occ, today)

@@ -162,8 +162,8 @@ T_PUNISH_SYNC = r"^处罚名单更新[\s:：]*(强制|重建)?$"
 T_PUNISH_NOTIFY = r"^处罚通报推送[\s:：]*(开|关|状态|测试)?$"
 T_PET = r"^宠物$"
 T_PET_PUSH = r"^宠物推送[\s:：]*(开|关|状态|测试)?$"
-T_FESTIVAL = r"^节日$"
 T_FESTIVAL_PUSH = r"^节日推送[\s:：]*(开|关|状态|测试)?$"
+T_FESTIVAL = r"^节日(?:[\s:：]+(.+))?$"
 T_HELP = r"^魔兽帮助$"
 
 _RE_CACHE: dict[str, re.Pattern] = {}
@@ -195,7 +195,7 @@ BIS <专精>                  饰品Top3 + 副属性 + 种族
 魔兽新闻 / 魔兽新闻改
 魔兽新闻推送 开/关/状态/测试   每5分钟检查，有更新自动推送本群（开/关/测试需管理员）
 日历 [关键词] / 事件 / <版本>事件
-节日                         国服当前节日/活动（美酒节、增益周等）
+节日 [名字]                  当前节日活动；带名字查上次/下次时间（如：节日 美酒节）
 节日推送 开/关/状态/测试      每天定时播报当前节日活动（开/关/测试需管理员）
 开箱 [数量] / 红手榜 [数量]
 语录 [BOSS名] / 吃什么 / 低保 / 物价 <物品1、物品2>
@@ -1713,12 +1713,16 @@ class WowPlugin(Star):
 
     @filter.regex(T_FESTIVAL)
     async def festival_cmd(self, event: AstrMessageEvent):
-        '''节日：国服当前节日/活动（美酒节、增益周、暗月马戏团等，真节日加🎉）'''
+        '''节日 [名字]：无参=当前节日活动；带名字=该节日的上次/下次时间段'''
         if not self._limited("default", self._group_key(event)):
             yield event.plain_result("查询太频繁，请稍后再试")
             return
+        arg = self._cap(T_FESTIVAL, event)
         try:
-            yield self._md(event, await festival_svc.query_text())
+            if arg:
+                yield self._md(event, await festival_svc.cycle_text(arg))
+            else:
+                yield self._md(event, await festival_svc.query_text())
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"查询失败：{e}")
 
