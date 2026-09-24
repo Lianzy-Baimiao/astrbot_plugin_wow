@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 
 import httpx
 
 from .const import HTTP_TIMEOUT, UA
 
-logger = logging.getLogger("astrbot_plugin_wow")
+from astrbot.api import logger
 
 _client: httpx.AsyncClient | None = None
 

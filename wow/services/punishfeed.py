@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import re
 
 from ..net import fetch_bytes, fetch_text
@@ -21,7 +20,7 @@ from ..store import data_dir, load_json, save_json
 from . import news as news_svc
 from . import punish as punish_svc
 
-logger = logging.getLogger("astrbot_plugin_wow.punishfeed")
+from astrbot.api import logger
 
 # 标题里出现这些词才算处罚公告（「治理公告」有时不带名单，一并扫、没 PDF 自然跳过）
 _TITLE_HINT = re.compile(r"处罚(?:公告|名单)|违规处理|治理公告")

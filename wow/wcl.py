@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import re
 import time
@@ -12,7 +11,7 @@ from pathlib import Path
 
 from .net import get_client
 
-logger = logging.getLogger("astrbot_plugin_wow.wcl")
+from astrbot.api import logger
 
 OAUTH_URL = "https://www.warcraftlogs.com/oauth/token"
 GRAPHQL_URL = "https://www.warcraftlogs.com/api/v2/client"

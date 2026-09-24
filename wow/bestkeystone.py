@@ -4,11 +4,10 @@
 from __future__ import annotations
 
 import datetime as dt
-import logging
 
 from .net import fetch_json
 
-logger = logging.getLogger("astrbot_plugin_wow.bestkeystone")
+from astrbot.api import logger
 
 BASE_URL = "https://bestkeystone.com"
 

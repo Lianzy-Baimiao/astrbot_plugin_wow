@@ -25,14 +25,13 @@ FlowUs 分享页「下周大事件」（作者每周三左右更新，国服口�
 from __future__ import annotations
 
 import datetime as dt
-import logging
 import re
 import time
 
 from ..net import fetch_json
 from ..store import load_json, save_json
 
-logger = logging.getLogger("astrbot_plugin_wow.festival")
+from astrbot.api import logger
 
 DOC_UUID = "9ca6e3b7-3309-4344-a8ea-12a6042ff36d"
 DOC_API = f"https://flowus.cn/api/docs/{DOC_UUID}"

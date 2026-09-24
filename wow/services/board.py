@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import logging
 import re
 
 from ..data.names import class_cn, realm_cn, spec_cn
@@ -12,7 +11,7 @@ from ..net import fetch_json
 from ..store import get_board_store
 from ..wcl import get_wcl_client, realm_slug
 
-logger = logging.getLogger("astrbot_plugin_wow.board")
+from astrbot.api import logger
 
 RIO_FIELDS = "gear,mythic_plus_scores_by_season%3Acurrent,mythic_plus_ranks"
 

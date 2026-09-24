@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 import datetime as dt
-import logging
 import re
 
 from ..data.affixes import AFFIX_CN, short_name
 from ..raiderio import cn_period_end, current_affixes
 
-logger = logging.getLogger("astrbot_plugin_wow.reset")
+from astrbot.api import logger
 
 _affix_cache: list[str] | None = None
 _affix_at: float = 0

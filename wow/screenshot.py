@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import os
 import sys
 import tempfile
@@ -18,7 +17,7 @@ from pathlib import Path
 
 from .store import data_dir
 
-logger = logging.getLogger("astrbot_plugin_wow.screenshot")
+from astrbot.api import logger
 
 _ready: bool | None = None
 _install_started = False

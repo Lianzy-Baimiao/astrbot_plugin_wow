@@ -4,11 +4,10 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 
 from .net import fetch_json
 
-logger = logging.getLogger("astrbot_plugin_wow.bloodmallet")
+from astrbot.api import logger
 
 BASE = "https://bloodmallet.com/chart/get"
 DEFAULT_ILVL = 298

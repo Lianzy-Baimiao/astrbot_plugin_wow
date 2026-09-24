@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import sqlite3
 import threading
@@ -12,7 +11,7 @@ from pathlib import Path
 
 from .const import PLUGIN_NAME
 
-logger = logging.getLogger("astrbot_plugin_wow")
+from astrbot.api import logger
 
 _lock = threading.Lock()
 _data_dir: Path | None = None

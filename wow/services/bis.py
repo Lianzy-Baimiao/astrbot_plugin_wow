@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import logging
-
 from ..bloodmallet import (
     DEFAULT_ILVL,
     FIGHT_STYLE_AOE,
@@ -23,7 +21,7 @@ from ..data.specs import (
     resolve_spec,
 )
 
-logger = logging.getLogger("astrbot_plugin_wow.bis")
+from astrbot.api import logger
 
 # 满级英雄毕业装等（当前版本，用户确认）
 HERO_ILVL = 321

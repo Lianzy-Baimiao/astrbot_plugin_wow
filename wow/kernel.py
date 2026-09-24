@@ -4,14 +4,13 @@
 from __future__ import annotations
 
 import html
-import logging
 import re
 import time
 
 from .net import fetch_text
 from .store import load_json, save_json
 
-logger = logging.getLogger("astrbot_plugin_wow.kernel")
+from astrbot.api import logger
 
 SCHED_URL = "https://wow.kernel.moe/Schedule"
 CACHE_TTL = 1800  # 30 分钟

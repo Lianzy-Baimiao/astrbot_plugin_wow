@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
-import logging
 import time
 
-logger = logging.getLogger("astrbot_plugin_wow.prices")
+from astrbot.api import logger
 
 PRICES_FILE = "prices.json"
 STALE_DAYS = 7          # 超过这么久的条目标记为旧数据

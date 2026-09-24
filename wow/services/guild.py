@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 import datetime as dt
-import logging
 
 from ..net import fetch_json
 from ..raiderio import guild_profile, raid_rankings, raid_static_data
 from ..wago import raid_names
 
-logger = logging.getLogger("astrbot_plugin_wow.guild")
+from astrbot.api import logger
 
 DIFFICULTY_MAP = {"史诗": "mythic", "m": "mythic", "英雄": "heroic", "h": "heroic", "普通": "normal", "n": "normal", "随机": "lfr", "lfr": "lfr"}
 DIFFICULTY_CN = {"mythic": "史诗", "heroic": "英雄", "normal": "普通", "lfr": "随机"}

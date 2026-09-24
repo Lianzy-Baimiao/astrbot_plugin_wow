@@ -12,9 +12,7 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger("astrbot_plugin_wow.pdftable")
+from astrbot.api import logger
 
 _HEADER_WORDS = {
     "角色名", "角色昵称", "服务器名", "违规次数", "次数", "账号", "昵称", "区服", "服务器",

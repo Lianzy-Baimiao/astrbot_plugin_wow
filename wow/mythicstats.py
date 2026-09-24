@@ -4,12 +4,11 @@
 from __future__ import annotations
 
 import html as html_mod
-import logging
 import re
 
 from .net import fetch_text
 
-logger = logging.getLogger("astrbot_plugin_wow.mythicstats")
+from astrbot.api import logger
 
 TALENT_CN = {
     # —— 输出 ——

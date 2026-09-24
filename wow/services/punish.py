@@ -9,12 +9,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import re
 import threading
 from pathlib import Path
 
-logger = logging.getLogger("astrbot_plugin_wow.punish")
+from astrbot.api import logger
 
 _lock = threading.Lock()
 _cache: dict[str, tuple[int, int, list[dict]]] = {}

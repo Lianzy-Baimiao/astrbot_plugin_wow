@@ -5,12 +5,11 @@ from __future__ import annotations
 
 import datetime as dt
 import html
-import logging
 import re
 
 from ..net import get_client
 
-logger = logging.getLogger("astrbot_plugin_wow.nga")
+from astrbot.api import logger
 
 LINK_RE = re.compile(r"(ngabbs\.com|nga\.178\.com|bbs\.nga\.cn)/read\.php\?tid=(\d+)")
 TID_RE = re.compile(r"(?:ngabbs\.com|nga\.178\.com|bbs\.nga\.cn)/read\.php\?tid=(\d+)")

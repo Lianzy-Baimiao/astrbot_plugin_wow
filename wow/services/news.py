@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
-import logging
 import re
 
 from ..net import fetch_text
 from ..store import load_json, save_json
 
-logger = logging.getLogger("astrbot_plugin_wow.news")
+from astrbot.api import logger
 
 NEWS_URL = "https://wow.blizzard.cn/news/"
 

@@ -24,13 +24,12 @@ todayinwow.com 的 /api/wqs 只知道**当前激活**的世界任务（无未来
 from __future__ import annotations
 
 import datetime as dt
-import logging
 
 from ..data.petquests import quest_name_cn, zone_cn
 from ..net import post_json
 from ..store import load_json, save_json
 
-logger = logging.getLogger("astrbot_plugin_wow.petwq")
+from astrbot.api import logger
 
 WQS_API = "https://www.todayinwow.com/api/wqs"
 WQS_REGION = "EU"  # 欧服：北京 12:00 切批，比美服早 11 小时拿到国服明天的新批

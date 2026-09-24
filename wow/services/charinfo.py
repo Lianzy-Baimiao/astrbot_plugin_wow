@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import logging
 import time
 from urllib.parse import quote
 
@@ -12,7 +11,7 @@ from .. import store
 from ..net import fetch_json
 from ..wago import item_names, mplus_dungeon_names, raid_names
 
-logger = logging.getLogger("astrbot_plugin_wow.charinfo")
+from astrbot.api import logger
 
 GEAR_SLOTS = [
     ("head", "头部"), ("neck", "颈部"), ("shoulder", "肩部"), ("back", "背部"),

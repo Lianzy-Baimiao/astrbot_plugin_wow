@@ -6,7 +6,6 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import http.cookiejar
-import logging
 import random
 import re
 import urllib.error
@@ -20,7 +19,7 @@ from ..data.quotes import pick_quote
 from ..data.talents import translate_talent_key
 from ..store import load_json, save_json
 
-logger = logging.getLogger("astrbot_plugin_wow.misc")
+from astrbot.api import logger
 
 # ---------------------------- 吃什么 ----------------------------
 

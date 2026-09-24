@@ -3,12 +3,11 @@
 
 from __future__ import annotations
 
-import logging
 import time
 
 from .net import fetch_json, post_json
 
-logger = logging.getLogger("astrbot_plugin_wow.raiderio")
+from astrbot.api import logger
 
 BASE = "https://raider.io/api/v1"
 UA = "ZeroBot-Plugin-wow-astrbot/1.0"

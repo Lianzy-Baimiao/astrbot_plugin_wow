@@ -11,13 +11,12 @@ import asyncio
 import csv
 import io
 import json
-import logging
 from pathlib import Path
 
 from .net import fetch_text
 from .store import load_json, save_json
 
-logger = logging.getLogger("astrbot_plugin_wow.wago")
+from astrbot.api import logger
 
 ITEM_CACHE_FILE = "itemnames.json"
 _name_cache: dict[int, str] | None = None
