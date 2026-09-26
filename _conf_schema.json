@@ -20,12 +20,13 @@
     "description": "魔兽新闻定时推送的群（填写 unified_msg_origin 或群号，可多个）",
     "type": "list",
     "default": [],
-    "hint": "留空则不自动推送，仅手动 /魔兽新闻 查询"
+    "hint": "留空则不自动推送，仅手动 /魔兽新闻 查询。也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   },
   "reset_groups": {
     "description": "魔兽重置提醒推送的群（unified_msg_origin 或群号，可多个）",
     "type": "list",
-    "default": []
+    "default": [],
+    "hint": "也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   },
   "reset_time": {
     "description": "重置提醒推送时间（小时:分钟，周四）",
@@ -35,7 +36,8 @@
   "weekly_report_groups": {
     "description": "周报定时推送的群（unified_msg_origin 或群号，可多个）",
     "type": "list",
-    "default": []
+    "default": [],
+    "hint": "也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   },
   "weekly_report_day": {
     "description": "周报推送日（1=周一 ... 7=周日，建议周三，因周四重置），推送时间固定 20:00",
@@ -46,7 +48,7 @@
     "description": "wowboard 指令白名单：名单/名单 添加/名单 删除/榜单/周报/查卡 只对名单内的群开放",
     "type": "list",
     "default": [],
-    "hint": "填 unified_msg_origin 或群号（可多个）。留空 = 不限制，所有会话可用；私聊不受限制。例：339466990 或 napcat:GroupMessage:339466990"
+    "hint": "填 unified_msg_origin 或群号（可多个）。留空 = 不限制，所有会话可用；私聊不受限制。例：339466990 或 napcat:GroupMessage:339466990。也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   },
   "punish_xlsx_dir": {
     "description": "处罚名单 xlsx 所在目录（「处罚」指令查询用）",
@@ -70,19 +72,19 @@
     "description": "收录到新处罚名单后通报的群（unified_msg_origin 或群号，可多个）",
     "type": "list",
     "default": [],
-    "hint": "留空则静默收录，不发群消息"
+    "hint": "留空则静默收录，不发群消息。也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   },
   "pet_push_groups": {
     "description": "宠物对战世界任务每日通报的群（unified_msg_origin 或群号，可多个）",
     "type": "list",
     "default": [],
-    "hint": "中午 12:00 起每 5 分钟轮询欧服切批（源站放出新批有延迟），拿到国服明天 07:00 开始的批次即推（附今天批次），出现重量级野兽时加预警。也可在群内用「宠物推送 开/关」管理"
+    "hint": "中午 12:00 起每 5 分钟轮询欧服切批（源站放出新批有延迟），拿到国服明天 07:00 开始的批次即推（附今天批次），出现重量级野兽时加预警。也可在群内用「宠物推送 开/关」管理。也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   },
   "festival_push_groups": {
     "description": "节日通告每日推送的群（unified_msg_origin 或群号，可多个）",
     "type": "list",
     "default": [],
-    "hint": "每天按下面的时间播报国服当前节日/活动（美酒节、万圣节、增益周、暗月马戏团等，真节日加🎉），空档日也发。数据源为「下周大事件」（国服口径，每周三左右更新）。也可在群内用「节日推送 开/关」管理"
+    "hint": "每天按下面的时间播报国服当前节日/活动（美酒节、万圣节、增益周、暗月马戏团等，真节日加🎉），空档日也发。数据源为「下周大事件」（国服口径，每周三左右更新）。也可在群内用「节日推送 开/关」管理。也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   },
   "festival_push_time": {
     "description": "节日通告推送时间（小时:分钟，每天）",
@@ -92,7 +94,10 @@
   "markdown_strip_platforms": {
     "description": "强制剥 Markdown 的平台（按平台分流，优先于总开关和群名单）",
     "type": "list",
-    "default": ["aiocqhttp", "napcat"],
+    "default": [
+      "aiocqhttp",
+      "napcat"
+    ],
     "hint": "填 umo 冒号前的平台标识或适配器类型（如 napcat、aiocqhttp）。命中名单的平台一律发纯文本，私聊也一样；其余平台按下面的总开关/群名单走。留空 = 不按平台分流"
   },
   "markdown_output": {
@@ -111,6 +116,6 @@
     "description": "Markdown 群黑白名单（配合上一项生效，unified_msg_origin 或群号，可多个）",
     "type": "list",
     "default": [],
-    "hint": "生效范围=all 时此名单不生效"
+    "hint": "生效范围=all 时此名单不生效。也可在插件面板「群 × 功能」矩阵里按群名勾选（推荐，写回的就是这里）。"
   }
 }

@@ -72,7 +72,14 @@ from astrbot.api.star import Context, Star
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 from wow.const import PLUGIN_NAME
+from wow.groups import (
+    SOURCE_API,
+    GroupNameResolver,
+    parse_group_info,
+    parse_group_list,
+)
 from wow.net import close_client
+from wow.page import WowPageController
 from wow.services import affix as affix_svc
 from wow.services import bis as bis_svc
 from wow.services import board as board_svc
@@ -96,6 +103,7 @@ from wow.services import wclfmt
 from wow.store import close_stores, set_data_dir
 from wow.templates.css import quality_color
 from wow.wcl import get_wcl_client
+from wow import webmatrix as wm
 
 try:
     from wow.data.specs import strip_arg_label
@@ -454,6 +462,15 @@ class WowPlugin(Star):
         self._last_news_check: float = 0
         self._last_punish_check: float = 0
         self._fired: set[tuple] = set()
+        # Web 面板：群号 → 群名缓存（OneBot 事件不带群名，自己攒）+ 接口注册
+        self.groups = GroupNameResolver(plugin_data / "groups.json")
+        self.groups.load()
+        self._group_name_tasks: dict[str, asyncio.Task] = {}
+        # 平台段写成适配器类型名/不存在的实例时，只 warning 一次（否则每个定时任务都刷屏）
+        self._bad_umo_warned: set[str] = set()
+        self._data_dir_path = lambda: plugin_data
+        self.page = WowPageController(context, self)
+        self.page.register_routes()
         logger.info(
             "魔兽世界插件初始化完成 | 插件根目录：%s | 模板目录存在：%s | 数据目录：%s",
             _PLUGIN_ROOT, TEMPLATE_DIR.is_dir(), plugin_data,
@@ -488,6 +505,151 @@ class WowPlugin(Star):
 
     def _limited(self, kind: str, key: str) -> bool:
         return self._limits[kind].ok(key)
+
+    # ------------------------------------------------------------------
+    # Web 面板：群名与群列表
+    # ------------------------------------------------------------------
+
+    @filter.event_message_type(filter.EventMessageType.ALL)
+    async def on_any_message(self, event: AstrMessageEvent):
+        """任何消息都顺手记一下群名（面板要按群名勾选功能）。不产出回复。"""
+        try:
+            self._remember_group(event)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("记录群名失败: %s", e)
+
+    @staticmethod
+    def _event_group_name(event: AstrMessageEvent) -> str:
+        """事件自带的群名（Telegram / Discord 等平台有，OneBot 没有）。"""
+        group = getattr(getattr(event, "message_obj", None), "group", None)
+        return str(getattr(group, "group_name", "") or "").strip()
+
+    @staticmethod
+    def _event_platform_id(event: AstrMessageEvent) -> str:
+        getter = getattr(event, "get_platform_id", None)
+        if callable(getter):
+            try:
+                return str(getter() or "")
+            except Exception:  # noqa: BLE001
+                pass
+        meta = getattr(event, "platform_meta", None)
+        return str(getattr(meta, "id", "") or "")
+
+    def _remember_group(self, event: AstrMessageEvent) -> None:
+        umo = self._umo(event)
+        if not umo:
+            return
+        gid = self._group_id(event)
+        self.groups.remember(
+            umo,
+            group_id=gid,
+            group_name=self._event_group_name(event),
+            platform_id=self._event_platform_id(event),
+        )
+        if gid and not self.groups.name_of(umo):
+            self._schedule_group_name_lookup(event, umo, gid)
+
+    def _schedule_group_name_lookup(self, event: AstrMessageEvent, umo: str, gid: str) -> None:
+        """首次见到某个群时后台问一次 get_group_info（不阻塞消息处理）。"""
+        if umo in self._group_name_tasks:
+            return
+        client = getattr(event, "bot", None) or getattr(event, "client", None)
+        if client is None or not callable(getattr(client, "call_action", None)):
+            return
+        try:
+            task = asyncio.create_task(
+                self._learn_group_name(client, umo, gid, self._event_platform_id(event))
+            )
+        except RuntimeError:  # 没有运行中的事件循环
+            return
+        self._group_name_tasks[umo] = task
+        task.add_done_callback(lambda _t, key=umo: self._group_name_tasks.pop(key, None))
+
+    async def _learn_group_name(self, client, umo: str, gid: str, platform_id: str) -> None:
+        try:
+            result = await client.call_action(
+                "get_group_info", group_id=int(gid) if str(gid).isdigit() else gid
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.debug("查询群 %s 名称失败: %s", gid, e)
+            return
+        info = parse_group_info(result)
+        name = str(info.get("group_name") or "").strip()
+        if not name:
+            return
+        self.groups.remember(
+            umo,
+            group_id=gid or str(info.get("group_id") or ""),
+            group_name=name,
+            platform_id=platform_id,
+            member_count=info.get("member_count"),
+            source=SOURCE_API,
+        )
+
+    @staticmethod
+    def _inst_platform_id(inst) -> str:
+        meta = getattr(inst, "meta", None)
+        if callable(meta):
+            try:
+                return str(getattr(meta(), "id", "") or "")
+            except Exception:  # noqa: BLE001
+                pass
+        config = getattr(inst, "config", None)
+        if isinstance(config, dict):
+            return str(config.get("id") or "")
+        return ""
+
+    def _platform_clients(self):
+        """列出 (平台实例 id, 客户端对象)；取不到平台管理器时一个都不返回。"""
+        manager = getattr(self.context, "platform_manager", None)
+        getter = getattr(manager, "get_insts", None)
+        if not callable(getter):
+            return
+        try:
+            insts = list(getter() or [])
+        except Exception as e:  # noqa: BLE001
+            logger.debug("取平台实例失败: %s", e)
+            return
+        for inst in insts:
+            client = None
+            get_client = getattr(inst, "get_client", None)
+            if callable(get_client):
+                try:
+                    client = get_client()
+                except Exception:  # noqa: BLE001
+                    client = None
+            if client is None:
+                client = getattr(inst, "bot", None) or getattr(inst, "client", None)
+            if client is not None:
+                yield self._inst_platform_id(inst), client
+
+    async def refresh_group_names(self, force: bool = False, interval: int = 300) -> int:
+        """去平台要一遍群列表（OneBot get_group_list）补齐群名，返回有变化的群数。"""
+        if not force and not self.groups.needs_refresh(interval):
+            return 0
+        changed = 0
+        for platform_id, client in self._platform_clients():
+            action = getattr(client, "call_action", None)
+            if not callable(action):
+                continue
+            try:
+                result = await action("get_group_list")
+            except Exception as e:  # noqa: BLE001
+                logger.debug("平台 %s 取群列表失败: %s", platform_id or "?", e)
+                continue
+            changed += self.groups.merge_api_groups(platform_id, parse_group_list(result))
+        self.groups.mark_refreshed()
+        return changed
+
+    async def save_config_now(self) -> None:
+        """面板改完配置后落盘（同步 / 异步两套 API 都兼容）。"""
+        saver = getattr(self.config, "save_config_async", None)
+        if callable(saver):
+            await saver()
+            return
+        saver = getattr(self.config, "save_config", None)
+        if callable(saver):
+            saver()
 
     # ---- wowboard 指令白名单 ------------------------------------------
     # wowboard_whitelist 留空 = 不限制；填了umo/群号 = 只放行名单内的群（私聊放行）。
@@ -625,6 +787,16 @@ class WowPlugin(Star):
 
     @staticmethod
     def _group_id(event: AstrMessageEvent) -> str:
+        # 优先用公开 API get_group_id()（跨平台稳定，qq_official 也认），
+        # 取不到再退回 message_obj.group_id（老行为，保证不回归）。
+        getter = getattr(event, "get_group_id", None)
+        if callable(getter):
+            try:
+                gid = str(getter() or "")
+                if gid:
+                    return gid
+            except Exception:  # noqa: BLE001
+                pass
         try:
             return str(event.message_obj.group_id or "")
         except Exception:  # noqa: BLE001
@@ -637,6 +809,9 @@ class WowPlugin(Star):
     # context.send_message() 只认 unified_msg_origin（platform:MessageType:session_id），
     # 裸群号必须补全，否则定时推送会静默失败。
 
+    # 注意：这里写**字面量**而不是 wm.GROUP_MSG_TYPE —— 插件根目录被半截覆盖
+    # （新 main.py + 旧 wow/）时，类体里引用新符号会在 import 阶段就抛
+    # AttributeError，把整个插件带崩；字面量最多只是行为退化成旧版。
     _GROUP_MSG_TYPE = "GroupMessage"
 
     def _platform_names(self) -> list[str]:
@@ -660,22 +835,89 @@ class WowPlugin(Star):
                 return names
         return []
 
+    def _platform_instances(self) -> list[tuple]:
+        """当前已加载平台的 (实例id, 适配器类型名) 列表；取不到返回空。
+
+        兼容两种取法：platform_manager.platform_insts / get_insts()。
+        """
+        for get in (
+            lambda: self.context.platform_manager.platform_insts,
+            lambda: self.context.get_platform_insts(),
+            lambda: self.context.platform_manager.get_insts(),
+        ):
+            try:
+                insts = list(get() or [])
+            except Exception:  # noqa: BLE001
+                continue
+            out = []
+            for p in insts:
+                try:
+                    meta = p.meta()
+                    out.append((str(meta.id), str(meta.name)))
+                except Exception:  # noqa: BLE001
+                    continue
+            if out:
+                return out
+        return []
+
+    def _bare_id_platform(self) -> str:
+        """裸群号要挂到哪个平台**实例 id** 上。
+
+        AstrBot 的 send_message 按平台**实例 id** 匹配（不是适配器类型名），所以这里返回
+        实例 id：优先 aiocqhttp 类型的实例（裸群号基本都是 OneBot 群的写法），否则用第一个
+        已加载实例；都探不到才回落 aiocqhttp（与旧行为一致，这种情况下谁也发不出去）。
+        """
+        insts = self._platform_instances()
+        ids = [pid for pid, _ in insts]
+        for pid, ptype in insts:
+            if ptype == "aiocqhttp":
+                return pid
+        return ids[0] if ids else "aiocqhttp"
+
     def _norm_umo(self, entry) -> str:
-        """把配置里的一项推送目标归一化成 unified_msg_origin。"""
+        """把配置里的一项推送目标归一化成「真正发得出去」的 unified_msg_origin。
+
+        ``Context.send_message()`` 按平台**实例 id** 精确匹配（不是适配器类型名），
+        写错了不会报错、只会静默丢消息，所以这里主动修两种写法：
+
+        - 裸群号 → 补当前实例 id（``_bare_id_platform()``）
+        - 平台段写成适配器类型名（``aiocqhttp`` / ``qq_official``）→ 换成该类型的实例 id
+
+        平台段是认不出来的东西（既不是实例 id 也不是已加载类型名）时原样返回，
+        但 warning 一次——正是这种写法在静默丢消息。
+
+        ``wm.rewrite_umo`` 拿不到（插件目录被半截覆盖：新 main.py + 旧 wow/）时
+        退回旧逻辑（只补裸群号），不让整个插件因为一次混装就崩在推送路径上。
+        """
         s = str(entry or "").strip()
         if not s:
             return ""
-        if ":" in s:  # 已经是完整 umo
-            return s
-        plats = self._platform_names()
-        # 裸群号是 OneBot（aiocqhttp）风格，优先挂到它上面；否则用首个已加载平台
-        if "aiocqhttp" in plats:
-            plat = "aiocqhttp"
-        elif plats:
-            plat = plats[0]
+        rewriter = getattr(wm, "rewrite_umo", None)
+        if not callable(rewriter):
+            logger.warning("wow：wow/webmatrix.py 版本过旧（缺 rewrite_umo），请按整包重新安装")
+            return s if ":" in s else f"{self._bare_id_platform()}:{self._GROUP_MSG_TYPE}:{s}"
+        umo, state = rewriter(s, self._platform_instances(), self._bare_id_platform())
+        if state == "type":
+            logger.debug("wow：%s 的平台段是适配器类型名，已改写为 %s", s, umo)
+        elif state in ("unknown", "plain"):
+            self._warn_bad_umo(s, state)
+        return umo
+
+    def _warn_bad_umo(self, umo: str, state: str) -> None:
+        """坏写法只警告一次（否则每个定时任务周期都刷屏）。"""
+        if umo in self._bad_umo_warned:
+            return
+        self._bad_umo_warned.add(umo)
+        if state == "plain":
+            logger.warning(
+                "wow：%s 是裸群号但没探到可用的平台实例，这条推送发不出去（面板可一键整理）", umo
+            )
         else:
-            plat = "aiocqhttp"
-        return f"{plat}:{self._GROUP_MSG_TYPE}:{s}"
+            logger.warning(
+                "wow：%s 的平台不是已加载的实例 id（写成了类型名或旧实例名），这条推送会静默失败"
+                "（面板「群 × 功能」里可一键整理）",
+                umo,
+            )
 
     def _norm_umo_list(self, key: str) -> list[str]:
         """读取推送目标配置并归一化、去重（保持配置顺序）。"""
@@ -1964,6 +2206,13 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     async def terminate(self):
+        for task in list(self._group_name_tasks.values()):
+            task.cancel()
+        self._group_name_tasks.clear()
+        try:
+            self.groups.flush()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("退出前保存群名缓存失败: %s", e)
         if self._scheduler_task:
             self._scheduler_task.cancel()
         await close_client()

@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>魔兽世界</title>
+<!--
+  显式声明桥接 SDK：AstrBot 会把这个 src 重写成带 asset_token 的真实地址。
+  整个页面里除这一处外不要再出现那个脚本地址（连注释都不行）。
+-->
+<script src="/api/plugin/page/bridge-sdk.js"></script>
+<style>
+:root {
+  --bg: #f5f7fa; --card: #ffffff; --border: #e5e7eb; --text: #1f2937;
+  --text2: #6b7280; --text3: #9ca3af; --accent: #3b82f6;
+  --accent-soft: rgba(59, 130, 246, 0.1); --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.1); --ok: #22c55e; --ok-soft: rgba(34, 197, 94, 0.12);
+  --warn: #f59e0b; --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --radius: 10px;
+}
+html[data-theme="dark"] {
+  --bg: #17181c; --card: #1f2126; --border: #32353c; --text: #e5e7eb;
+  --text2: #9ca3af; --text3: #6b7280; --accent: #60a5fa;
+  --accent-soft: rgba(96, 165, 250, 0.14); --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14); --ok: #4ade80; --ok-soft: rgba(74, 222, 128, 0.14);
+  --warn: #fbbf24; --shadow: none;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px; line-height: 1.6;
+}
+.wrap { max-width: 1180px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.topbar h1 { font-size: 18px; margin: 0; font-weight: 600; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); }
+.pill.off { background: var(--danger-soft); color: var(--danger); }
+.pill.warn { background: rgba(245, 158, 11, 0.14); color: var(--warn); }
+.spacer { flex: 1 1 auto; }
+.stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.stat { flex: 1 1 130px; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 14px; box-shadow: var(--shadow); }
+.stat .n { font-size: 19px; font-weight: 600; }
+.stat .l { font-size: 12px; color: var(--text2); }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 14px; margin-bottom: 14px; }
+.card h2 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.field.grow { flex: 1 1 200px; min-width: 0; }
+label { font-size: 12px; color: var(--text2); }
+input[type="text"], select, textarea {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; width: 100%; outline: none;
+}
+input[type="text"]:focus, select:focus { border-color: var(--accent); }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+button { font: inherit; cursor: pointer; border-radius: 8px; padding: 7px 14px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text); white-space: nowrap; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--danger); border-color: var(--danger-soft); }
+button.link { border: none; background: none; color: var(--accent); padding: 2px 4px; }
+button.link.danger { color: var(--danger); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.hint { font-size: 12px; color: var(--text2); margin: 6px 0; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th { font-size: 12px; color: var(--text2); font-weight: 500; white-space: nowrap; }
+tbody tr:hover { background: var(--accent-soft); }
+td.acts, th.acts { text-align: right; white-space: nowrap; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); }
+.tag.off { background: var(--danger-soft); color: var(--danger); }
+.tag.warn { background: rgba(245, 158, 11, .16); color: var(--warn); }
+.empty { text-align: center; color: var(--text2); padding: 18px; }
+.list { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.list-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px;
+  border-bottom: 1px solid var(--border); }
+.list-item:last-child { border-bottom: none; }
+.list-item .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.thumb { width: 150px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.thumb img { width: 100%; height: 190px; object-fit: cover; display: block; }
+.thumb .cap { font-size: 11px; color: var(--text2); padding: 6px 8px; word-break: break-all; }
+.pick-list { max-height: 46vh; overflow: auto; margin-top: 10px;
+  border: 1px solid var(--border); border-radius: 8px; }
+.pick-item { display: flex; gap: 10px; align-items: center; padding: 9px 12px;
+  cursor: pointer; border-bottom: 1px solid var(--border); }
+.pick-item:last-child { border-bottom: none; }
+.pick-item:hover { background: var(--accent-soft); }
+.pick-item .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-item .sub { color: var(--text2); font-size: 12px; white-space: nowrap; }
+.modal-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex;
+  align-items: center; justify-content: center; padding: 18px; z-index: 50; }
+.modal-mask[hidden] { display: none; }
+.modal { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; width: 100%; max-width: 620px; max-height: 88vh; overflow: auto; box-shadow: var(--shadow); }
+.modal h2 { margin-top: 0; }
+.modal-foot { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
+  background: #111827; color: #fff; padding: 9px 16px; border-radius: 8px; font-size: 13px;
+  opacity: 0; pointer-events: none; transition: all .2s ease; z-index: 99; max-width: 80vw; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { background: #b91c1c; }
+.matrix th, .matrix td { text-align: center; }
+.matrix th.grp, .matrix td.grp { text-align: left; min-width: 180px; }
+.matrix th.rot { white-space: nowrap; font-size: 11px; }
+.matrix .col-hint { display: block; color: var(--text3); font-weight: 400; }
+.matrix tbody tr.on { background: rgba(59, 130, 246, .05); }
+.matrix tbody tr.dead { background: var(--danger-soft); }
+.matrix th.plat, .matrix td.plat { white-space: nowrap; font-size: 12px; }
+.matrix td.plat { color: var(--text2); }
+.matrix td.plat.bad { color: var(--danger); font-weight: 600; }
+.matrix td.plat.fix { color: var(--warn); }
+.matrix td.grp .tag { margin-left: 4px; }
+.matrix tbody tr:hover { background: var(--accent-soft); }
+#diagBox code { background: var(--accent-soft); border-radius: 4px; padding: 0 4px; }
+.sticky-actions { position: sticky; bottom: 0; background: var(--card); padding-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>魔兽世界</h1>
+    <span class="pill" id="runPill">加载中…</span>
+    <span class="spacer"></span>
+    <button id="btnReload">刷新</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <h2>群 × 功能（8 份群名单一张表）</h2>
+    <p class="hint">
+      勾选=把这个群加到对应功能里，取消=移除。保存后写回插件的 8 份群名单配置，
+      与群里「推送 开/关」「wowboard 名单」等命令改的是同一套数据、同一份配置。
+    </p>
+    <p class="hint">
+      「平台」列说明这条订阅会走哪个平台实例：<b>官方</b>机器人（qq_official，实例 id 形如
+      default_102737249）的群 id 是 32 位 openid、平台也不给群名，所以那边只显示 id；
+      <b>napcat</b>（OneBot）那边才有数字群号和群名。同一个群在两边的 id 完全不同，
+      是两条独立订阅，别当重复删错了。平台显示成 ⚠ 的写法发不出去（写的是适配器类型名
+      或旧实例名），点「整理重复与失效写法」一键修正。
+    </p>
+    <p class="hint" id="platHint"></p>
+    <div class="row">
+      <div class="field grow">
+        <label for="searchBox">搜索群名 / 群号</label>
+        <input type="text" id="searchBox" placeholder="输入后自动过滤">
+      </div>
+      <label id="hideEmptyLbl" title="隐藏没有勾选任何功能的群，表格更短；搜索时仍会显示"
+        style="display:flex;align-items:center;gap:6px;white-space:nowrap;align-self:flex-end;padding-bottom:6px">
+        <input type="checkbox" id="hideEmpty" checked> 只看已启用功能的群
+      </label>
+      <button id="btnRefreshGroups">刷新群列表</button>
+      <button id="btnClearAll">全部取消</button>
+      <button id="btnDedupe">整理重复与失效写法</button>
+    </div>
+    <div class="table-wrap" style="margin-top:10px">
+      <table class="matrix">
+        <thead><tr id="matrixHead"></tr></thead>
+        <tbody id="matrixBody"></tbody>
+      </table>
+    </div>
+    <p class="hint" id="diagBox"></p>
+    <div class="row sticky-actions">
+      <button id="btnSaveGroups" class="primary">保存群名单</button>
+      <span class="hint" id="saveHint"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>定时任务</h2>
+    <p class="hint">「下次触发」按当前配置推算；「上次跑」是插件本次启动后的实际记录。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>任务</th><th style="width:80px">开关</th><th>配置</th>
+          <th style="width:150px">下次触发</th><th style="width:120px">上次跑</th><th>说明</th>
+        </tr></thead>
+        <tbody id="schedBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>定时与格式设置</h2>
+      <div class="field">
+        <label for="cfgResetTime">重置提醒时间（周四，HH:MM）</label>
+        <input type="text" id="cfgResetTime" placeholder="06:50">
+      </div>
+      <div class="field">
+        <label for="cfgFestivalTime">节日通告时间（每天，HH:MM）</label>
+        <input type="text" id="cfgFestivalTime" placeholder="07:05">
+      </div>
+      <div class="field">
+        <label for="cfgWeeklyDay">周报推送日（固定 20:00 推）</label>
+        <select id="cfgWeeklyDay"></select>
+      </div>
+      <div class="field">
+        <label for="cfgMarkdownMode">Markdown 生效范围</label>
+        <select id="cfgMarkdownMode"></select>
+      </div>
+      <div class="row">
+        <button id="btnSaveSettings" class="primary">保存设置</button>
+        <span class="hint" id="cfgHint"></span>
+      </div>
+      <p class="hint" id="mdNote"></p>
+    </div>
+    <div class="card">
+      <h2>数据</h2>
+      <div class="list" id="dataList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="modal-mask" id="modalMask" hidden>
+  <div class="modal">
+    <h2 id="modalTitle"></h2>
+    <p id="modalMsg" style="white-space:pre-line;color:var(--muted,#9aa)"></p>
+    <input id="modalInput" type="text" hidden
+      style="width:100%;box-sizing:border-box;padding:6px 8px;margin-top:6px">
+    <div class="modal-foot">
+      <button class="primary" id="modalOk">确定</button>
+      <button id="modalCancel">取消</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+
+
+  function byId(id) { return document.getElementById(id); }
+
+  var toastTimer = null;
+  function toast(msg, isErr) {
+    var el = byId("toast");
+    el.textContent = String(msg || "");
+    el.className = "show" + (isErr ? " err" : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = ""; }, 3200);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // 面板跑在 AstrBot 仪表盘的 iframe 里，浏览器会屏蔽 window.prompt/confirm，
+  // 所以用页内弹窗替代（否则「编辑备注」点了没反应）。
+  function _modal(opts) {
+    return new Promise(function (resolve) {
+      var mask = byId("modalMask");
+      var input = byId("modalInput");
+      byId("modalTitle").textContent = opts.title || "";
+      byId("modalMsg").textContent = opts.message || "";
+      input.hidden = !opts.prompt;
+      if (opts.prompt) { input.value = opts.value || ""; }
+      mask.hidden = false;
+      if (opts.prompt) { input.focus(); input.select(); }
+      function done(val) {
+        mask.hidden = true;
+        byId("modalOk").onclick = null;
+        byId("modalCancel").onclick = null;
+        input.onkeydown = null;
+        resolve(val);
+      }
+      byId("modalOk").onclick = function () { done(opts.prompt ? input.value : true); };
+      byId("modalCancel").onclick = function () { done(opts.prompt ? null : false); };
+      input.onkeydown = function (e) {
+        if (e.key === "Enter") { e.preventDefault(); done(input.value); }
+        else if (e.key === "Escape") { e.preventDefault(); done(null); }
+      };
+    });
+  }
+  function promptModal(title, message, value) {
+    return _modal({ prompt: true, title: title, message: message, value: value || "" });
+  }
+  function confirmModal(message, title) {
+    return _modal({ prompt: false, title: title || "确认", message: message });
+  }
+
+  function fmtBytes(n) {
+    n = Number(n) || 0;
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
+    if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+    return n + " B";
+  }
+
+  // 后端统一返回 {status, message, data}；status 不是 ok 就抛出 message。
+  function unwrap(resp) {
+    if (resp && typeof resp === "object" && "status" in resp) {
+      if (String(resp.status).toLowerCase() !== "ok") {
+        throw new Error(resp.message || "请求失败");
+      }
+      return resp.data || {};
+    }
+    return resp || {};
+  }
+
+  var _bridgeReady = null;
+  function waitForBridge(timeoutMs) {
+    if (_bridgeReady) return _bridgeReady;
+    var deadline = Date.now() + (timeoutMs || 8000);
+    _bridgeReady = new Promise(function (resolve, reject) {
+      (function poll() {
+        var bridge = window.AstrBotPluginPage;
+        if (bridge) {
+          var done = function () { resolve(bridge); };
+          if (typeof bridge.ready === "function") {
+            Promise.resolve(bridge.ready()).then(done, done);
+          } else {
+            done();
+          }
+          return;
+        }
+        if (Date.now() > deadline) {
+          _bridgeReady = null;
+          reject(new Error("面板桥接不可用，请在 AstrBot WebUI 里打开本页面"));
+          return;
+        }
+        setTimeout(poll, 32);
+      })();
+    });
+    return _bridgeReady;
+  }
+
+  function apiGet(path, params) {
+    return waitForBridge().then(function (bridge) {
+      return bridge.apiGet(path, params || {}).then(unwrap);
+    });
+  }
+
+  function apiPost(path, body) {
+    return waitForBridge().then(function (bridge) {
+      return bridge.apiPost(path, body || {}).then(unwrap);
+    });
+  }
+
+  function fail(err) { toast((err && err.message) || "操作失败", true); }
+
+  function initTheme() {
+    var params = new URLSearchParams(window.location.search);
+    var v = params.get("theme");
+    var dark = v === "dark" || params.get("isDark") === "true";
+    if (!v && params.get("isDark") === null) {
+      try {
+        dark = localStorage.getItem("astrbot_plugin_theme_is_dark") === "true";
+      } catch (e) { /* localStorage 被禁时用亮色 */ }
+    }
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    return dark;
+  }
+
+
+  var state = {
+    meta: {},
+    status: {},
+    rows: [],        // [{umo,label,group_id,group_name,count,flags:{key:bool},platform_*}]
+    columns: [],     // [{key,label,hint}]
+    summary: {},
+    schedule: { rows: [] },
+    settings: {},
+    data: {},
+    instances: [],   // 已加载平台实例 [{id,type,label,bare_id}]
+    platforms: [],   // 配置里每个平台段几个群 [{platform,count,state}]
+    dead: [],        // 平台实例不存在的写法
+    duplicates: []   // 同一群号的多种写法
+  };
+
+  // ---------- 渲染：状态卡 ----------
+
+  function renderStatus() {
+    var st = state.status || {};
+    var sum = st.summary || {};
+    var sched = (st.schedule && st.schedule.rows) || [];
+    var enabledTasks = sched.filter(function (r) { return r.enabled; }).length;
+    var prices = st.prices || {};
+    var pill = byId("runPill");
+    pill.textContent = st.running ? "定时任务运行中" : "定时任务未启动";
+    pill.className = "pill" + (st.running ? "" : " warn");
+
+    var priceText = prices.exists
+      ? (prices.items || 0) + " 条" +
+        (prices.stale_days != null
+          ? "（" + (prices.stale_days > 7 ? "⚠ " : "") + prices.stale_days + " 天前）"
+          : "")
+      : "未导入";
+    byId("stats").innerHTML = [
+      ['<div class="stat"><div class="n">', sum.groups || 0, '</div><div class="l">已配置群</div></div>'],
+      ['<div class="stat"><div class="n">', sum.links || 0, '</div><div class="l">名单条目</div></div>'],
+      ['<div class="stat"><div class="n">', enabledTasks, ' / ', sched.length, '</div><div class="l">启用中的任务</div></div>'],
+      ['<div class="stat"><div class="n">', esc(priceText), '</div><div class="l">物价表</div></div>'],
+      ['<div class="stat"><div class="n">', esc(prices.realm || "—"), '</div><div class="l">物价服务器</div></div>'],
+      ['<div class="stat"><div class="n">', esc(prices.newest_text || "—"), '</div><div class="l">拍卖数据截止</div></div>']
+    ].map(function (p) { return p.join(""); }).join("");
+  }
+
+  // ---------- 渲染：矩阵 ----------
+
+  function renderMatrixHead() {
+    var html = '<th class="grp">群</th><th>群号</th><th class="plat">平台</th>';
+    state.columns.forEach(function (col) {
+      html += '<th class="rot" title="' + esc(col.hint) + '">' + esc(col.label) +
+        '<span class="col-hint">' + esc(col.key) + "</span></th>";
+    });
+    html += '<th style="width:60px">合计</th>';
+    byId("matrixHead").innerHTML = html;
+  }
+
+  // 平台列：说清这条订阅走哪个实例（官方 openid / napcat 数字群号一眼可分）
+  function platformCell(row) {
+    var st = row.platform_state || "";
+    var cls = st === "unknown" || st === "plain" ? " bad" : (st === "type" ? " fix" : "");
+    var mark = st === "unknown" || st === "plain" ? "⚠ " : "";
+    var title = "完整 umo：" + String(row.umo == null ? "" : row.umo);
+    if (st === "unknown") {
+      title += "\n这个平台实例当前没加载，推送会静默失败";
+    } else if (st === "plain") {
+      title += "\n裸群号且没探到可用平台实例，推送会静默失败";
+    } else if (st === "type") {
+      title += "\n写的是适配器类型名，插件会自动改写成实例 id 发出";
+    }
+    if (row.platform_type) {
+      title += "\n适配器类型：" + row.platform_type;
+    }
+    return '<td class="plat' + cls + '" title="' + esc(title) + '">' +
+      mark + esc(row.platform_text || "—") + "</td>";
+  }
+
+  function renderMatrix() {
+    var kw = (byId("searchBox").value || "").trim().toLowerCase();
+    var hideEmpty = !!(byId("hideEmpty") && byId("hideEmpty").checked);
+    var rows = state.rows.filter(function (r) {
+      // 搜索时一律参与匹配（方便找到没启用功能的群去勾选）；不搜索时才按开关隐藏空群
+      if (!kw && hideEmpty && !(r.count > 0)) return false;
+      if (!kw) return true;
+      return (String(r.label) + " " + (r.group_name || "") + " " + (r.group_id || "") + " " +
+        (r.platform_text || ""))
+        .toLowerCase().indexOf(kw) >= 0;
+    });
+    var tb = byId("matrixBody");
+    if (!rows.length) {
+      var msg;
+      if (!state.rows.length) {
+        msg = "还没有群：点「刷新群列表」拉取机器人所在的群，或先在群里说句话";
+      } else if (kw) {
+        msg = "没有匹配的群";
+      } else {
+        msg = "这些群都没启用功能，已被「只看已启用功能的群」隐藏（取消勾选可看全部）";
+      }
+      tb.innerHTML = '<tr><td colspan="' + (state.columns.length + 4) +
+        '" class="empty">' + msg + "</td></tr>";
+      return;
+    }
+    tb.innerHTML = rows.map(function (row) {
+      var cells = state.columns.map(function (col) {
+        return '<td><input type="checkbox" data-umo="' + esc(row.umo) +
+          '" data-key="' + esc(col.key) + '"' +
+          (row.flags[col.key] ? " checked" : "") + "></td>";
+      }).join("");
+      var trCls = (row.count ? "on" : "") + (row.reachable === false ? " dead" : "");
+      return '<tr class="' + trCls.trim() + '">' +
+        '<td class="grp" title="' + esc(row.label || row.umo) + '">' +
+          '<button class="link" data-rename="' + esc(row.umo) + '" ' +
+            'title="起个备注名（官方平台的群没有群名）">✎</button> ' +
+          esc(row.group_name || "（无群名）") +
+          (row.group_name ? "" : ' <span class="tag warn">无群名</span>') + "</td>" +
+        '<td>' + esc(row.group_id || "—") + "</td>" +
+        platformCell(row) +
+        cells +
+        '<td class="count">' + (row.count || 0) + "</td></tr>";
+    }).join("");
+  }
+
+  // 诊断区：坏写法 + 同群号多写法（官方/napcat 的 id 不同，不会被误当重复）
+  function renderDiag() {
+    var lines = [];
+    var insts = state.instances || [];
+    if (insts.length) {
+      lines.push("已加载平台：" + insts.map(function (i) {
+        return "<code>" + esc(i.label) + "</code>" + (i.bare_id ? "（裸群号默认补到这里）" : "");
+      }).join("、"));
+    }
+    var dead = state.dead || [];
+    if (dead.length) {
+      lines.push("⚠ " + dead.length + " 条写法指向不存在的平台实例（发不出去）：" +
+        dead.map(function (d) { return "<code>" + esc(d.umo) + "</code>"; }).join("、"));
+    }
+    var dup = state.duplicates || [];
+    if (dup.length) {
+      lines.push("同一群号有多种写法（整理按钮只合并「类型名 → 实例 id」那种；" +
+        "不同真实平台上的同号群请手动确认）：" +
+        dup.map(function (d) {
+          return esc(d.group_id) + " → " + d.umos.map(function (u) {
+            return "<code>" + esc(u) + "</code>";
+          }).join(" ／ ");
+        }).join("；"));
+    }
+    byId("diagBox").innerHTML = lines.join("<br>");
+  }
+
+  // ---------- 渲染：定时任务 ----------
+
+  function renderSchedule() {
+    var rows = (state.schedule && state.schedule.rows) || [];
+    var tb = byId("schedBody");
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="empty">没有定时任务</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(function (r) {
+      var when = esc(r.when || "");
+      if (r.interval_sec && r.remaining_sec) {
+        when += '<span class="col-hint">还有 ' + Math.round(r.remaining_sec / 60) + " 分钟</span>";
+      }
+      return "<tr>" +
+        "<td><b>" + esc(r.name) + "</b></td>" +
+        '<td><span class="tag' + (r.enabled ? "" : " off") + '">' +
+          (r.enabled ? "开" : "关") + "</span></td>" +
+        "<td>" + when + (r.groups ? '<span class="col-hint">' + r.groups + " 个群</span>" : "") + "</td>" +
+        "<td>" + esc(r.next_text || "—") + "</td>" +
+        "<td>" + esc(r.last_text || "—") + "</td>" +
+        '<td><span class="hint">' + esc(r.note || "") + "</span></td>" +
+        "</tr>";
+    }).join("");
+  }
+
+  // ---------- 渲染：设置与数据 ----------
+
+  function renderSettings() {
+    var st = state.settings || {};
+    var mods = (state.status && state.status.modifiers) || {};
+    byId("cfgResetTime").value = st.reset_time || "";
+    byId("cfgFestivalTime").value = st.festival_push_time || "";
+    var days = mods.weekdays || [];
+    byId("cfgWeeklyDay").innerHTML = days.map(function (d) {
+      return '<option value="' + d.value + '">' + esc(d.label) + "</option>";
+    }).join("");
+    byId("cfgWeeklyDay").value = String(st.weekly_report_day || 3);
+    var modes = mods.markdown_modes || [];
+    byId("cfgMarkdownMode").innerHTML = modes.map(function (m) {
+      return '<option value="' + esc(m.value) + '">' + esc(m.label) + "</option>";
+    }).join("");
+    byId("cfgMarkdownMode").value = st.markdown_group_mode || "all";
+    var strip = st.markdown_strip_platforms || [];
+    byId("mdNote").textContent = strip.length
+      ? "当前强制剥 MD 的平台：" + strip.join("、") + "（在插件配置页改）"
+      : "没有强制剥 MD 的平台；Markdown 总开关在插件配置页。";
+  }
+
+  function renderData() {
+    var d = state.data || {};
+    var items = [];
+    var prices = d.prices || {};
+    items.push('<div class="list-item"><span class="nm">物价表：' +
+      (prices.exists
+        ? prices.items + " 条 ｜ 服务器 " + (prices.realm || "?") +
+          " ｜ 数据截止 " + (prices.newest_text || "?") +
+          " ｜ 文件 " + (prices.mtime_text || "?") +
+          (prices.stale_days != null && prices.stale_days > 7
+            ? ' <span class="tag warn">已 ' + prices.stale_days + " 天没更新</span>"
+            : "")
+        : "还没导入（本机跑 tools/sync_prices.py 上传）") + "</span></div>");
+    var board = d.board || {};
+    items.push('<div class="list-item"><span class="nm">榜单名单：' +
+      (board.available ? board.roster + " 个角色" : "（数据库未打开）") +
+      (board.size ? " ｜ " + fmtBytes(board.size) : "") + "</span></div>");
+    var gacha = d.gacha || {};
+    items.push('<div class="list-item"><span class="nm">开箱积分：' +
+      (gacha.available ? gacha.players + " 个玩家" : "（数据库未打开）") +
+      (gacha.size ? " ｜ " + fmtBytes(gacha.size) : "") + "</span></div>");
+    var punish = d.punish || {};
+    items.push('<div class="list-item"><span class="nm">处罚名单：' +
+      (punish.count || 0) + " 个文件" +
+      (punish.files && punish.files.length
+        ? "（最新 " + esc(punish.files[0].name) + " · " +
+          esc(punish.files[0].modified_text) + "）"
+        : "") + "</span></div>");
+    var cache = d.cache || {};
+    items.push('<div class="list-item"><span class="nm">缓存目录：' +
+      (cache.files || 0) + " 个文件 ｜ " + fmtBytes(cache.bytes || 0) + "</span></div>");
+    items.push('<div class="list-item"><span class="nm">数据目录：' +
+      esc(d.data_dir || "—") + "</span></div>");
+    byId("dataList").innerHTML = items.join("");
+  }
+
+  // ---------- 数据加载 ----------
+
+  function loadMeta() {
+    return apiGet("page/meta").then(function (d) {
+      state.meta = d || {};
+      state.columns = d.columns || [];
+      renderMatrixHead();
+    });
+  }
+
+  function loadGroups(refresh) {
+    return apiGet("page/groups", refresh ? { refresh: "1" } : {}).then(function (d) {
+      state.rows = d.rows || [];
+      state.columns = d.columns || state.columns;
+      state.summary = d.summary || {};
+      state.instances = d.instances || [];
+      state.platforms = d.platforms || [];
+      state.dead = d.dead || [];
+      state.duplicates = d.duplicates || [];
+      renderMatrixHead();
+      renderMatrix();
+      renderDiag();
+      byId("platHint").textContent = (state.platforms || []).length
+        ? "已配置 " + (state.summary.groups || 0) + " 个群：" +
+          state.platforms.map(function (p) {
+            var bad = p.state === "unknown" || p.state === "plain";
+            return p.platform + " " + p.count + " 个" + (bad ? " ⚠" : "");
+          }).join("、")
+        : "";
+      byId("saveHint").textContent = d.refreshed
+        ? "群列表已刷新（" + d.refreshed + " 个群有更新）"
+        : "";
+      if (refresh) {
+        toast("群列表已刷新：共 " + state.rows.length + " 个群，其中 " +
+          (d.named || 0) + " 个有名称");
+      }
+    });
+  }
+
+  function loadStatus() {
+    return apiGet("page/status").then(function (d) {
+      state.status = d || {};
+      state.schedule = d.schedule || { rows: [] };
+      state.settings = d.settings || {};
+      renderStatus();
+      renderSchedule();
+      renderSettings();
+    });
+  }
+
+  function loadData() {
+    return apiGet("page/data").then(function (d) {
+      state.data = d || {};
+      renderData();
+    });
+  }
+
+  function loadAll() {
+    return Promise.all([loadMeta(), loadStatus(), loadGroups(false), loadData()]);
+  }
+
+  // ---------- 保存 ----------
+
+  function collectRows() {
+    // 直接读 DOM：勾选状态是唯一真相，避免 state 与界面不同步
+    var boxes = byId("matrixBody").querySelectorAll('input[type="checkbox"][data-key]');
+    var byUmo = {};
+    Array.prototype.forEach.call(boxes, function (box) {
+      var umo = box.getAttribute("data-umo");
+      var key = box.getAttribute("data-key");
+      if (!byUmo[umo]) {
+        byUmo[umo] = { umo: umo, flags: {} };
+      }
+      byUmo[umo].flags[key] = box.checked;
+    });
+    // 没渲染到的行（被搜索过滤掉的）也要带上，否则保存会丢配置
+    state.rows.forEach(function (row) {
+      if (byUmo[row.umo]) {
+        return;
+      }
+      var flags = {};
+      state.columns.forEach(function (col) { flags[col.key] = !!row.flags[col.key]; });
+      byUmo[row.umo] = { umo: row.umo, flags: flags };
+    });
+    return Object.keys(byUmo).map(function (k) { return byUmo[k]; });
+  }
+
+  function saveGroups() {
+    var btn = byId("btnSaveGroups");
+    btn.disabled = true;
+    byId("saveHint").textContent = "保存中…";
+    apiPost("page/groups/save", { rows: collectRows() }).then(function (d) {
+      var changes = d.changes || [];
+      var detail = changes.map(function (c) {
+        var parts = [];
+        if (c.added.length) { parts.push("+" + c.added.length); }
+        if (c.removed.length) { parts.push("-" + c.removed.length); }
+        return c.label + " " + parts.join("/");
+      }).join("；");
+      toast(detail ? "已保存：" + detail : "已保存（没有变化）");
+      return loadAll();
+    }).catch(fail).then(function () {
+      btn.disabled = false;
+      byId("saveHint").textContent = "";
+    });
+  }
+
+  function saveSettings() {
+    var btn = byId("btnSaveSettings");
+    btn.disabled = true;
+    byId("cfgHint").textContent = "保存中…";
+    apiPost("page/settings/save", {
+      reset_time: byId("cfgResetTime").value.trim(),
+      festival_push_time: byId("cfgFestivalTime").value.trim(),
+      weekly_report_day: byId("cfgWeeklyDay").value,
+      markdown_group_mode: byId("cfgMarkdownMode").value
+    }).then(function () {
+      toast("设置已保存");
+      return loadStatus();
+    }).catch(fail).then(function () {
+      btn.disabled = false;
+      byId("cfgHint").textContent = "";
+    });
+  }
+
+  function clearAll() {
+    confirmModal("把所有列的勾选都取消？（还要点「保存群名单」才生效）", "全部取消").then(function (ok) {
+      if (!ok) return;
+      var boxes = byId("matrixBody").querySelectorAll('input[type="checkbox"][data-key]');
+      Array.prototype.forEach.call(boxes, function (box) { box.checked = false; });
+      Array.prototype.forEach.call(
+        byId("matrixBody").querySelectorAll("tr"),
+        function (tr) {
+          var cell = tr.querySelector("td.count");
+          if (cell) { cell.textContent = "0"; }
+          tr.className = tr.className.indexOf("dead") >= 0 ? "dead" : "";
+        }
+      );
+      toast("已全部取消，记得点「保存群名单」");
+    });
+  }
+
+  function dedupeGroups() {
+    confirmModal(
+      "把「适配器类型名」（aiocqhttp / qq_official 这类）换成真实平台实例 id，\n" +
+      "并合并同一平台同一群号的重复写法？\n只改写法，不改勾选（每个群在哪些名单里完全不变）。",
+      "整理写法"
+    ).then(function (ok) {
+      if (!ok) return;
+      var btn = byId("btnDedupe");
+      btn.disabled = true;
+      apiPost("page/groups/dedupe", {}).then(function (d) {
+        var report = d.report || [];
+        var rewritten = report.filter(function (r) {
+          return r.action === "type" || r.action === "bare";
+        }).length;
+        var merged = report.filter(function (r) { return r.action === "merge"; }).length;
+        var stuck = (d.unreachable || []).length;
+        var parts = [];
+        if (rewritten) parts.push("改写 " + rewritten + " 处");
+        if (merged) parts.push("合并 " + merged + " 处");
+        if (stuck) parts.push(stuck + " 处平台实例不存在（需手动改）");
+        toast(parts.length ? "已整理：" + parts.join("，") : "没有需要整理的地方");
+        return loadGroups(false);
+      }).catch(fail).then(function () {
+        btn.disabled = false;
+      });
+    });
+  }
+
+  function renameGroup(umo) {
+    var row = null;
+    state.rows.forEach(function (r) { if (r.umo === umo) row = r; });
+    promptModal(
+      "会话备注名",
+      "给这个会话起个备注名（只影响面板显示，方便认出官方平台的 openid 群）。留空 = 清掉备注。",
+      row ? (row.group_name || "") : ""
+    ).then(function (name) {
+      if (name === null) return;
+      return apiPost("page/groups/rename", { umo: umo, name: String(name).trim() })
+        .then(function (d) {
+          toast(d.name ? "备注已保存：" + d.label : "备注已清空");
+          return loadGroups(false);
+        })
+        .catch(fail);
+    });
+  }
+
+  // ---------- 绑定 & 启动 ----------
+
+  function bind() {
+    byId("btnReload").addEventListener("click", function () {
+      loadAll().then(function () { toast("已刷新"); }).catch(fail);
+    });
+    byId("searchBox").addEventListener("input", renderMatrix);
+    // 「只看已启用功能的群」开关：记住选择（iframe 里 localStorage 可能不可用，包一层）
+    try {
+      var savedHide = localStorage.getItem("wowHideEmpty");
+      if (savedHide !== null) { byId("hideEmpty").checked = savedHide === "1"; }
+    } catch (e) { /* ignore */ }
+    byId("hideEmpty").addEventListener("change", function () {
+      try { localStorage.setItem("wowHideEmpty", this.checked ? "1" : "0"); } catch (e) { /* ignore */ }
+      renderMatrix();
+    });
+    byId("btnRefreshGroups").addEventListener("click", function () {
+      loadGroups(true).catch(fail);
+    });
+    byId("btnSaveGroups").addEventListener("click", saveGroups);
+    byId("btnDedupe").addEventListener("click", dedupeGroups);
+    byId("btnSaveSettings").addEventListener("click", saveSettings);
+    byId("btnClearAll").addEventListener("click", clearAll);
+    byId("matrixBody").addEventListener("click", function (e) {
+      var target = e.target;
+      if (!target || !target.closest) return;
+      var btn = target.closest("[data-rename]");
+      if (!btn) return;
+      e.preventDefault();
+      renameGroup(btn.getAttribute("data-rename"));
+    });
+    byId("matrixBody").addEventListener("change", function (e) {
+      var box = e.target;
+      if (!box || box.type !== "checkbox") return;
+      var tr = box.closest("tr");
+      if (!tr) return;
+      var count = tr.querySelectorAll('input[type="checkbox"][data-key]:checked').length;
+      var cell = tr.querySelector("td.count");
+      if (cell) { cell.textContent = String(count); }
+      // 别把「平台实例不存在」的 dead 标记一起冲掉
+      tr.className = ((count ? "on" : "") + (tr.className.indexOf("dead") >= 0 ? " dead" : "")).trim();
+    });
+  }
+
+  initTheme();
+  bind();
+  byId("matrixBody").innerHTML = '<tr><td colspan="12" class="empty">正在连接面板…</td></tr>';
+  waitForBridge()
+    .then(loadAll)
+    .catch(function (err) {
+      byId("matrixBody").innerHTML = '<tr><td colspan="12" class="empty">' +
+        esc((err && err.message) || "加载失败") + "</td></tr>";
+      fail(err);
+    });
+})();
+</script>
+</body>
+</html>
