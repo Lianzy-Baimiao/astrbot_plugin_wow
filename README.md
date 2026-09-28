@@ -2,8 +2,10 @@
 
 魔兽世界综合插件（AstrBot）。16 个魔兽相关插件的全部功能，统一为一个插件。适用于 AstrBot 机器人平台。
 
-**所有指令都是裸词触发，`` 前缀可省略**（群里直接发 `词缀`、`BIS 火法`、`角色 阿尔萨斯 白银之手` 即可；带 `` 也一样能用）。
+**所有指令都是裸词触发，`/` 前缀可省略**（群里直接发 `词缀`、`BIS 火法`、`角色 阿尔萨斯 白银之手` 即可；带 `/` 也一样能用）。
 发 `魔兽帮助` 可列出全部指令。
+
+> 更新日志见 [Releases](https://github.com/Lianzy-Baimiao/astrbot_plugin_wow/releases)。
 
 ## 功能与指令
 
@@ -154,7 +156,7 @@ AstrBot WebUI → 插件 → 魔兽世界 → 打开面板（**需要 AstrBot �
 
 ## 配置（WebUI 插件配置页）
 
-- `wcl_client_id` / `wcl_client_secret`：Warcraft Logs API 凭证（可选，也可放环境变量 `WCL_CLIENT_ID``WCL_CLIENT_SECRET` 或仓库根目录 `wcl_cred.json`）
+- `wcl_client_id` / `wcl_client_secret`：Warcraft Logs API 凭证（可选，也可放环境变量 `WCL_CLIENT_ID` / `WCL_CLIENT_SECRET` 或仓库根目录 `wcl_cred.json`）
 - `default_realm`：公会查询默认服务器（默认影之哀伤）
 - `news_groups` / `reset_groups` / `weekly_report_groups` / `punish_notify_groups` / `pet_push_groups` / `festival_push_groups`：定时推送目标（unified_msg_origin 或群号）。也可在群内用命令开关本群推送：`魔兽新闻推送 开/关`、`重置提醒 开/关`、`周报推送 开/关`、`处罚通报推送 开/关`、`宠物推送 开/关`、`节日推送 开/关`（命令自动记录本群，开/关需管理员）
 - `festival_push_time`：节日通告推送时间（默认 07:05，每天）
