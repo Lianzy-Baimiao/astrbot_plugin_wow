@@ -2122,13 +2122,20 @@ class WowPlugin(Star):
             except Exception as e:  # noqa: BLE001
                 logger.warning("宠物任务通报生成失败: %s", e)
             if text:
+                # 至少成功发出一个群才算"已推"：否则平台重启等瞬时失败会把当天
+                # 锁死（pushed_day==today 挡掉后续所有轮询），留给下一轮 5 分钟重试。
+                ok = 0
                 for umo in pet_groups:
                     try:
                         await self._send_text_to(umo, text)
+                        ok += 1
                     except Exception as e:  # noqa: BLE001
                         logger.warning("宠物任务通报推送失败 %s: %s", umo, e)
-                petwq_svc.mark_pushed(petwq_svc.today_str())
-                logger.info("宠物任务预告已推送（国服明天批次）")
+                if ok:
+                    petwq_svc.mark_pushed(petwq_svc.today_str())
+                    logger.info("宠物任务预告已推送（国服明天批次），成功 %d/%d 群", ok, len(pet_groups))
+                else:
+                    logger.warning("宠物任务预告全部群发送失败，未标记已推，下一轮 5 分钟后重试")
             else:
                 logger.info("宠物任务预告：源站尚未放出明日批次，5 分钟后再试")
 
