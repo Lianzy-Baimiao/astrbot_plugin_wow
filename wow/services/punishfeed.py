@@ -113,11 +113,28 @@ _KIND_TAGS = (
 )
 
 
+# 用户常给名单文件手动加括号备注（如「(含误封)」），文件因此改了名。
+# 识别「同一份名单」时要忽略这类备注，别把改过名的当成丢失而重复下载。
+# 只吃成对括号里的内容，代码自加的类别后缀（PVE史诗钥石地下城）不带括号，不受影响。
+_NOTE_RE = re.compile(r"[（(][^（）()]*[)）]")
+
+
+def _canon(stem: str) -> str:
+    """归一文件名：去掉用户手动加的括号备注。
+    `...第一赛季(含误封)_PVE_处罚名单` -> `...第一赛季_PVE_处罚名单`"""
+    return _NOTE_RE.sub("", stem).strip()
+
+
 def _existing_path(base, name: str):
-    """已归档到子目录的同名 xlsx 路径；没有则 None。force 重抓时原地覆盖，
-    不会在根目录再造一份重复文件。"""
-    for p in base.rglob(f"{name}.xlsx"):
-        return p
+    """磁盘（含子目录）上对应这份名单的 xlsx；没有则 None。force 重抓时原地覆盖，
+    不会在根目录再造一份重复文件。忽略用户加的括号备注：`..._PVE_处罚名单.xlsx`
+    与 `...(含误封)_PVE_处罚名单.xlsx` 视为同一份，改过名也不会重下。"""
+    if not base.is_dir():
+        return None
+    want = _canon(name)
+    for p in base.rglob("*.xlsx"):
+        if _canon(p.stem) == want:
+            return p
     return None
 
 
@@ -137,7 +154,7 @@ def _disambiguate(name: str, anchor: str, claimed: dict, base, force: bool = Fal
     alt = f"{parts[0]}_{parts[1]}_{parts[2]}{tag}_{parts[3]}"
     if alt in claimed:
         return None
-    if not force and any(base.rglob(f"{alt}.xlsx")):
+    if not force and _existing_path(base, alt) is not None:
         return None
     return alt
 
@@ -218,7 +235,7 @@ def valid_seen(base) -> dict:
     owners: dict[str, list[str]] = {}
     for url, rec in seen.items():
         owners.setdefault((rec or {}).get("file", ""), []).append(url)
-    on_disk = {p.stem for p in base.rglob("*.xlsx")} if base.is_dir() else set()
+    on_disk = {_canon(p.stem) for p in base.rglob("*.xlsx")} if base.is_dir() else set()
 
     good: dict[str, dict] = {}
     for url, rec in seen.items():
@@ -229,7 +246,7 @@ def valid_seen(base) -> dict:
             logger.warning("[punishfeed] 账本冲突（%d 条记录指向 %s），作废以便重抓",
                            len(owners[name]), name)
             continue
-        if name not in on_disk:
+        if _canon(name) not in on_disk:
             logger.warning("[punishfeed] 账本记的 %s 已不在磁盘上，作废以便重抓", name)
             continue
         good[url] = rec
@@ -294,8 +311,8 @@ async def sync_once(base=None, max_articles: int = 8, force: bool = False) -> li
     claimed: dict[str, str] = {}  # name -> pdf_url，防同一轮内两份名单撞同名
     for c in cands:
         name = target_name(c["meta"])
-        # rglob：用户可能把名单归档进子目录，别重复下载
-        if not force and any(base.rglob(f"{name}.xlsx")):
+        # rglob：用户可能把名单归档进子目录、或加括号备注改了名，都别重复下载
+        if not force and _existing_path(base, name) is not None:
             continue
         if c["pdf_url"] in seen:
             continue
