@@ -1,4 +1,5 @@
 # astrbot_plugin_wow
+[![许可 MIT](https://img.shields.io/badge/许可-MIT-blue?style=flat-square)](LICENSE) [![赞赏 爱发电](https://img.shields.io/badge/赞赏-爱发电-946ce6?style=flat-square)](https://ifdian.net/a/lianzy)
 
 魔兽世界综合插件（AstrBot）。16 个魔兽相关插件的全部功能，统一为一个插件。适用于 AstrBot 机器人平台。
 
