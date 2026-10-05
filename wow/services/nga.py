@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import html
 import re
+from urllib.parse import urlsplit
 
 from ..net import get_client
 
@@ -101,17 +103,44 @@ async def fetch_topic(tid: str) -> dict:
 
 async def _fetch_raw(url: str) -> str:
     """GET NGA 接口：任何状态码都返回 body 文本（GBK→UTF-8）。"""
-    resp = await get_client().get(url, headers={"User-Agent": "Nga_Official"}, timeout=20)
-    body = resp.content.decode("gbk", errors="replace")
-    # NGA 的错误原因在 body 里，优先报它
-    m = re.search(r'"error"\s*:\s*\{\s*"0"\s*:\s*"([^"]*)"', body)
-    if m:
-        raise RuntimeError(m.group(1))
-    if resp.status_code != 200:
-        raise RuntimeError(f"NGA 返回 {resp.status_code}")
-    if '"encode"' not in body:
-        raise RuntimeError("NGA 响应不完整，请重试")
-    return body
+    for attempt in range(2):
+        resp = await get_client().get(url, headers={"User-Agent": "Nga_Official"}, timeout=20)
+        body = resp.content.decode("gbk", errors="replace")
+        # Preserve explicit API errors rather than retrying login/permission failures.
+        m = re.search(r'"error"\s*:\s*\{\s*"0"\s*:\s*"([^"]*)"', body)
+        if m:
+            raise RuntimeError(m.group(1))
+        content_type = resp.headers.get("content-type", "")
+        probe = body.lstrip()[:4096].lower()
+        is_html = "text/html" in content_type.lower() or bool(
+            re.search(r"<!doctype\s+html|<html\b|<head\b|<body\b", probe)
+        )
+        if resp.status_code == 200 and not is_html and '"encode"' in body:
+            return body
+        if is_html:
+            if any(marker in probe for marker in (
+                "captcha", "challenge", "验证码", "人机验证", "安全验证",
+            )):
+                kind = "verification_page"
+                message = "NGA 返回疑似验证页，请稍后重试"
+            else:
+                kind = "html_page"
+                message = "NGA 返回网页而非帖子数据，请稍后重试"
+        else:
+            kind = "incomplete_data"
+            message = "NGA 响应不完整，请重试"
+        # Log bounded metadata only: never cookies, body text or redirect query strings.
+        logger.warning(
+            "NGA response anomaly: host=%s status=%s content_type=%r bytes=%s kind=%s attempt=%s/2",
+            urlsplit(url).hostname, resp.status_code, content_type[:120],
+            len(resp.content), kind, attempt + 1,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"NGA 返回 {resp.status_code}")
+        if attempt == 0:
+            await asyncio.sleep(0.5)
+        else:
+            raise RuntimeError(message)
 
 
 _STR_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
