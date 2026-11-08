@@ -143,7 +143,7 @@
     schedule: ["定时任务", "AUTOMATION", "每一次提醒，都在正确的时间抵达。"],
     data: ["数据资产", "DATA ARCHIVE", "物价、榜单与缓存，井然有序。"],
     appearance: ["界面外观", "PERSONALIZATION", "晨曦或暗夜，选择让你舒适的工作空间。"],
-    settings: ["插件设置", "CONFIGURATION", "调整推送节奏，让工具箱按你的方式运行。"]
+    settings: ["插件设置", "CONFIGURATION", "维护输出屏蔽关键词，调整推送时间与消息格式。"]
   };
 
   function showView() {
@@ -229,7 +229,7 @@
   function updateLocks() {
     ["view-groups", "view-settings"].forEach(function (id) {
       byId(id).setAttribute("aria-busy", String(busy));
-      byId(id).querySelectorAll("input, select, button").forEach(function (el) { el.disabled = busy || !loaded; });
+      byId(id).querySelectorAll("input, select, textarea, button").forEach(function (el) { el.disabled = busy || !loaded; });
     });
     byId("btnReload").disabled = busy;
     byId("btnReload").textContent = busy ? "同步中…" : "↻ 同步数据";
@@ -468,6 +468,7 @@
     var st = state.settings || {};
     var mods = (state.status && state.status.modifiers) || {};
     byId("cfgResetTime").value = st.reset_time || "";
+    byId("outputBlockKeywords").value = (st.output_block_keywords || []).join("\n");
     byId("cfgFestivalTime").value = st.festival_push_time || "";
     var days = mods.weekdays || [];
     byId("cfgWeeklyDay").innerHTML = days.map(function (d) {
@@ -647,7 +648,8 @@
       reset_time: byId("cfgResetTime").value.trim(),
       festival_push_time: byId("cfgFestivalTime").value.trim(),
       weekly_report_day: byId("cfgWeeklyDay").value,
-      markdown_group_mode: byId("cfgMarkdownMode").value
+      markdown_group_mode: byId("cfgMarkdownMode").value,
+      output_block_keywords: Array.from(new Set(byId("outputBlockKeywords").value.split(/\r?\n/).map(function (word) { return word.trim(); }).filter(Boolean)))
     }).then(function () {
       markDirty("settings", false);
       toast("设置已保存");

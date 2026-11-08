@@ -13,6 +13,7 @@ label, .hint { color: var(--text2); }
 .hint { margin: 6px 0; }
 .topbar, .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .field { display: flex; flex-direction: column; }
+textarea { resize: vertical; min-height: 120px; }
 .field.grow { flex: 1 1 200px; min-width: 0; }
 .card, .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 .grid2 { display: grid; }

@@ -8,7 +8,7 @@
     GET  /page/status         定时任务（下一次触发时间）+ 数据新鲜度概览
     GET  /page/groups         群 × 功能 矩阵（带群名），refresh=1 现问平台群列表
     POST /page/groups/save    保存矩阵（写回 8 份群名单配置 + 落盘）
-    POST /page/settings/save  保存标量设置（重置时间/周报日/节日时间/Markdown 范围等）
+    POST /page/settings/save  保存输出屏蔽清单及定时、格式设置
     GET  /page/data           数据目录清单（物价表/榜单/开箱/处罚名单）
 
 设计要点：群名单配置里原本允许「裸群号」和「完整 umo」两种写法，面板统一按**完整 umo**
@@ -67,6 +67,7 @@ except (ImportError, AttributeError):  # 老版本回落到 quart
 
 from . import webmatrix as wm
 from .groups import GroupNameResolver, session_label, split_umo
+from .output_filter import normalize_keywords
 
 PLUGIN_NAME = "astrbot_plugin_wow"
 
@@ -127,7 +128,7 @@ class WowPageController:
             ("/page/groups/save", self.save_groups, ["POST"], "魔兽世界：保存群名单"),
             ("/page/groups/dedupe", self.dedupe_groups, ["POST"], "魔兽世界：整理群名单写法"),
             ("/page/groups/rename", self.rename_group, ["POST"], "魔兽世界：给会话起备注名"),
-            ("/page/settings/save", self.save_settings, ["POST"], "魔兽世界：保存定时与格式设置"),
+            ("/page/settings/save", self.save_settings, ["POST"], "魔兽世界：保存输出屏蔽、定时与格式设置"),
             ("/page/data", self.get_data, ["GET"], "魔兽世界：数据目录清单"),
         ]
         for path, handler, methods, desc in routes:
@@ -589,6 +590,7 @@ class WowPageController:
             "punish_auto_fetch": bool(self._cfg("punish_auto_fetch", False)),
             "markdown_output": bool(self._cfg("markdown_output", True)),
             "markdown_strip_platforms": list(self._cfg("markdown_strip_platforms", []) or []),
+            "output_block_keywords": normalize_keywords(self._cfg("output_block_keywords", ["无限"])),
         }
 
     async def save_settings(self) -> Any:
@@ -622,21 +624,30 @@ class WowPageController:
             return self._err(f"Markdown 生效范围只能是 {'/'.join(valid_modes)}")
         updates["markdown_group_mode"] = raw_mode
 
+        if "output_block_keywords" in payload:
+            keywords = payload["output_block_keywords"]
+            if not isinstance(keywords, list) or not all(isinstance(word, str) for word in keywords):
+                return self._err("输出屏蔽关键词必须是文本列表，每项一个关键词")
+            updates["output_block_keywords"] = normalize_keywords(keywords)
+
+        missing = object()
+        previous = {key: config.get(key, missing) for key in updates}
         try:
             for key, value in updates.items():
                 config[key] = value
-        except Exception as exc:
-            return self._err(f"写入配置失败：{exc}", status_code=500)
-        try:
             saved = await self._save_config()
+            if not saved:
+                raise RuntimeError("配置对象没有保存方法")
         except Exception as exc:
+            for key, value in previous.items():
+                if value is missing:
+                    config.pop(key, None)
+                else:
+                    config[key] = value
             _log_warn(f"保存配置失败: {exc}")
             return self._err("配置保存失败，请查看服务端日志", status_code=500)
 
-        message = "设置已保存"
-        if not saved:
-            message += "（⚠️ 配置对象没有保存方法，可能不会持久化）"
-        return self._ok(self._scalar_values(), message)
+        return self._ok(self._scalar_values(), "设置已保存")
 
     # ------------------------------------------------------------------
     # 接口：状态与数据

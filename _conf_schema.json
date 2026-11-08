@@ -1,4 +1,11 @@
 {
+  "output_block_keywords": {
+    "description": "输出屏蔽关键词（每项一个，命中任意关键词就不发送）",
+    "type": "list",
+    "items": {"type": "string"},
+    "default": ["无限"],
+    "hint": "也可在插件 Web 面板「插件设置 → 输出屏蔽」中维护，每行一个，保存立即生效。按字面包含匹配，区分英文大小写；默认屏蔽含「无限」的文本。适用于手动回复、自动推送及卡片的文本数据，命中时连同附图一起跳过。清空列表关闭屏蔽，空白项和重复项自动忽略。"
+  },
   "wcl_client_id": {
     "description": "Warcraft Logs API Client ID（用于 WCL 战绩查询，可选）",
     "type": "string",

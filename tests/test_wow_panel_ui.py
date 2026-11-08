@@ -24,7 +24,7 @@ const names = ['艾泽拉斯远征军', '周四开荒小分队', '翡翠梦境']
 let rows = names.map((name, i) => ({umo: 'napcat:GroupMessage:' + (10001+i), group_id: String(10001+i), group_name: name, label: name, count: i === 2 ? 0 : 2,
   platform_text: 'napcat', platform_state: 'instance', reachable: true,
   flags: Object.fromEntries(keys.map((key,j) => [key, i < 2 && j < 2]))}));
-let settings = {reset_time:'06:50', festival_push_time:'07:05', weekly_report_day:3, markdown_group_mode:'all'};
+let settings = {reset_time:'06:50', festival_push_time:'07:05', weekly_report_day:3, markdown_group_mode:'all', output_block_keywords:['无限']};
 const tasks = ['魔兽新闻','重置提醒','周报','宠物世界任务'].map((name,i) => ({name, enabled:i<3, when:i===0?'每 5 分钟检查':'每周四 06:50', next_text:'2026-10-08 06:50:00', last_text:'2026-10-01 06:50:02', groups:2, note:'按群订阅名单推送'}));
 window.mock = {posts:[], failGet:false, failSave:false, delay:0};
 window.AstrBotPluginPage = {
@@ -110,6 +110,36 @@ class PanelBrowserTests(unittest.TestCase):
         controls = [p.locator(s).bounding_box() for s in ['#searchBox', '#hideEmptyLbl', '#btnRefreshGroups']]
         centers = [r['y'] + r['height']/2 for r in controls]
         self.assertLess(max(centers)-min(centers), 2)
+
+    def test_output_block_keywords_visible_save_and_clear(self):
+        self.view("settings")
+        keywords = self.page.get_by_label("输出屏蔽关键词", exact=True)
+        expect(keywords).to_be_visible()
+        expect(keywords).to_have_value("无限")
+        keywords.fill("无限\n 广告 \n无限\n\n")
+        self.view("overview")
+        self.view("settings")
+        expect(keywords).to_have_value("无限\n 广告 \n无限\n\n")
+        self.page.locator("#btnSaveSettings").click()
+        expect(self.page.locator("#draftNotice")).to_be_hidden()
+        saved = self.page.evaluate("window.mock.posts.at(-1)")
+        self.assertEqual(saved["body"]["output_block_keywords"], ["无限", "广告"])
+        self.page.locator("#btnReload").click()
+        expect(keywords).to_have_value("无限\n广告")
+        keywords.fill("")
+        self.page.locator("#btnSaveSettings").click()
+        expect(self.page.locator("#draftNotice")).to_be_hidden()
+        self.assertEqual(self.page.evaluate("window.mock.posts.at(-1).body.output_block_keywords"), [])
+
+    def test_output_block_keywords_failed_save_preserves_draft(self):
+        self.view("settings")
+        keywords = self.page.get_by_label("输出屏蔽关键词", exact=True)
+        keywords.fill("广告")
+        self.page.evaluate("window.mock.failSave = true")
+        self.page.locator("#btnSaveSettings").click()
+        expect(self.page.locator("#toast")).to_have_class("toast show err")
+        expect(keywords).to_have_value("广告")
+        expect(self.page.locator("#draftNotice")).to_be_visible()
 
     def test_theme_toggle_persists_and_follows_host(self):
         root = self.page.locator("html")

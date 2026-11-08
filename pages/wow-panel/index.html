@@ -536,6 +536,12 @@
           </section>
           <section id="view-settings" class="view" aria-labelledby="viewTitle" hidden>
             <div class="card">
+              <h2>输出屏蔽</h2>
+              <div class="field">
+                <label for="outputBlockKeywords">输出屏蔽关键词</label>
+                <textarea id="outputBlockKeywords" rows="5" spellcheck="false" aria-describedby="outputFilterHelp" placeholder="每行一个关键词，例如：无限"></textarea>
+                <p class="hint" id="outputFilterHelp">每行一个，默认屏蔽「无限」。命中任意关键词时，整条内容及附图都不发送。保存后立即生效；清空并保存可关闭屏蔽。</p>
+              </div>
               <h2>
                 定时与格式设置
               </h2>

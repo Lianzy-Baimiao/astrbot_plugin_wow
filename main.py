@@ -79,6 +79,7 @@ from wow.groups import (
     parse_group_list,
 )
 from wow.net import close_client
+from wow.output_filter import blocked_keyword, filter_output, iter_texts
 from wow.page import WowPageController
 from wow.services import affix as affix_svc
 from wow.services import bis as bis_svc
@@ -506,6 +507,18 @@ class WowPlugin(Star):
     def _limited(self, kind: str, key: str) -> bool:
         return self._limits[kind].ok(key)
 
+    def _output_blocked(self, *texts) -> bool:
+        keyword = blocked_keyword(self.config, *texts)
+        if keyword is not None:
+            logger.info("魔兽输出已屏蔽，命中关键词：%s", keyword)
+            return True
+        return False
+
+    @staticmethod
+    def _image_result(event: AstrMessageEvent, url: str | None):
+        # 被过滤的卡片不构造空路径图片，交给回复入口静默跳过。
+        return event.image_result(url) if url else None
+
     # ------------------------------------------------------------------
     # Web 面板：群名与群列表
     # ------------------------------------------------------------------
@@ -767,7 +780,9 @@ class WowPlugin(Star):
             logger.warning("%s 尺寸估算失败，本次不裁剪（可能出现黑边）：%s", tmpl_name, e)
             return None
 
-    async def _render(self, tmpl_name: str, data: dict) -> str:
+    async def _render(self, tmpl_name: str, data: dict) -> str | None:
+        if self._output_blocked(*iter_texts(data)):
+            return None
         tmpl_path = TEMPLATE_DIR / tmpl_name
         if not tmpl_path.is_file():
             raise RuntimeError(
@@ -956,9 +971,14 @@ class WowPlugin(Star):
 
     async def _send_text_to(self, umo: str, text: str) -> None:
         from astrbot.api.event import MessageChain
-        await self.context.send_message(umo, MessageChain().message(self._md_for_umo(umo, text)))
+        output = self._md_for_umo(umo, text)
+        if self._output_blocked(text, output):
+            return
+        await self.context.send_message(umo, MessageChain().message(output))
 
-    async def _send_img_to(self, umo: str, url: str) -> None:
+    async def _send_img_to(self, umo: str, url: str | None) -> None:
+        if not url:
+            return
         from astrbot.api.event import MessageChain
         chain = MessageChain()
         if url.startswith(("http://", "https://")):
@@ -1016,6 +1036,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_HELP)
+    @filter_output
     async def help_cmd(self, event: AstrMessageEvent):
         '''魔兽帮助：列出全部指令'''
         yield self._md(event, HELP_TEXT)
@@ -1025,6 +1046,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_WCL)
+    @filter_output
     async def wcl_cmd(self, event: AstrMessageEvent):
         '''WCL 战绩速查：wcl 角色名 服务器名'''
         if not self._limited("default", self._group_key(event)):
@@ -1053,6 +1075,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_CHARINFO)
+    @filter_output
     async def charinfo_cmd(self, event: AstrMessageEvent):
         '''魔兽角色卡：角色 角色名 服务器名 [旧档案ID或raider.io链接]'''
         if not self._limited("heavy", self._group_key(event)):
@@ -1101,7 +1124,7 @@ class WowPlugin(Star):
             for s in data["slots"]:
                 s["color"] = quality_color(s["quality"])
             url = await self._render("charinfo.html", data)
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except asyncio.TimeoutError:
             yield event.plain_result("查询超时（Raider.IO / wago.tools 响应太慢），请稍后再试")
         except Exception as e:  # noqa: BLE001
@@ -1112,6 +1135,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_AFFIX)
+    @filter_output
     async def affix_cmd(self, event: AstrMessageEvent):
         '''本周词缀'''
         if not self._limited("default", self._group_key(event)):
@@ -1120,11 +1144,12 @@ class WowPlugin(Star):
         try:
             data = await affix_svc.build_affix_data()
             url = await self._render("affix.html", {"card": data["current"], "period_end": data.get("period_end")})
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"查询失败：{e}")
 
     @filter.regex(T_AFFIX_NEXT)
+    @filter_output
     async def next_affix_cmd(self, event: AstrMessageEvent):
         '''下周词缀'''
         if not self._limited("default", self._group_key(event)):
@@ -1136,7 +1161,7 @@ class WowPlugin(Star):
                 yield event.plain_result("暂无法推算下周词缀")
                 return
             url = await self._render("affix.html", {"card": data["next"], "period_end": data.get("period_end")})
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"查询失败：{e}")
 
@@ -1145,6 +1170,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_CALENDAR)
+    @filter_output
     async def calendar_cmd(self, event: AstrMessageEvent):
         '''魔兽事件日历：日历 [关键词]'''
         if not self._limited("default", self._group_key(event)):
@@ -1169,7 +1195,7 @@ class WowPlugin(Star):
                 "generated": data.get("generated", ""),
                 "rows": rows,
             })
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"日历获取失败：{e}")
 
@@ -1178,6 +1204,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_TRINKET_RANK)
+    @filter_output
     async def trinket_rank_cmd(self, event: AstrMessageEvent):
         '''饰品排行 <专精>，如：饰品排行 冰DK'''
         if not self._limited("heavy", f"{event.get_sender_id()}"):
@@ -1190,11 +1217,12 @@ class WowPlugin(Star):
         try:
             data = await bis_svc.build_trinket_rank(spec)
             url = await self._render("trinkets.html", data)
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(str(e))
 
     @filter.regex(T_BIS)
+    @filter_output
     async def bis_cmd(self, event: AstrMessageEvent):
         '''BIS 推荐 <专精>：饰品Top3 + 副属性 + 种族（出图，与原版一致）'''
         if not self._limited("heavy", f"{event.get_sender_id()}"):
@@ -1207,11 +1235,12 @@ class WowPlugin(Star):
         try:
             data = await bis_svc.build_bis(spec)
             url = await self._render("bis.html", data)
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(str(e))
 
     @filter.regex(T_SPECRANK)
+    @filter_output
     async def specrank_cmd(self, event: AstrMessageEvent):
         '''专精强度榜：强度榜 [aoe]'''
         if not self._limited("heavy", self._group_key(event)):
@@ -1223,7 +1252,7 @@ class WowPlugin(Star):
             url = await self._render("specrank.html", {
                 "rows": rows, "skipped": skipped, "aoe": is_aoe,
             })
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             if aoe:
                 yield event.plain_result(
@@ -1237,6 +1266,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_GUILD)
+    @filter_output
     async def guild_cmd(self, event: AstrMessageEvent):
         '''公会资料：公会 公会名 [服务器]'''
         if not self._limited("default", self._group_key(event)):
@@ -1251,11 +1281,12 @@ class WowPlugin(Star):
         try:
             data = await guild_svc.fetch_guild_card(name, realm)
             url = await self._render("guild.html", data)
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(str(e))
 
     @filter.regex(T_RAID_RANK)
+    @filter_output
     async def raid_rank_cmd(self, event: AstrMessageEvent):
         '''团本排行 [难度] [团本]'''
         if not self._limited("default", self._group_key(event)):
@@ -1272,7 +1303,7 @@ class WowPlugin(Star):
         try:
             data = await guild_svc.fetch_rank_card(difficulty, raid)
             url = await self._render("guild_rank.html", data)
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(str(e))
 
@@ -1281,6 +1312,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_ROSTER)
+    @filter_output
     async def roster_cmd(self, event: AstrMessageEvent):
         '''名单：查看预设名单'''
         if not self.wowboard_allowed(event):
@@ -1294,6 +1326,7 @@ class WowPlugin(Star):
         yield self._md(event, "\n".join(lines))
 
     @filter.regex(T_ROSTER_ADD)
+    @filter_output
     async def roster_add_cmd(self, event: AstrMessageEvent):
         '''名单 添加 <群友名> <角色名> <服务器>（需管理员）'''
         if not self.wowboard_allowed(event):
@@ -1315,6 +1348,7 @@ class WowPlugin(Star):
             yield event.plain_result("该成员已存在")
 
     @filter.regex(T_ROSTER_DEL)
+    @filter_output
     async def roster_del_cmd(self, event: AstrMessageEvent):
         '''名单 删除 <编号>（需管理员）'''
         if not self.wowboard_allowed(event):
@@ -1335,6 +1369,7 @@ class WowPlugin(Star):
             yield event.plain_result(f"编号 {parts[0]} 不存在")
 
     @filter.regex(T_BOARD)
+    @filter_output
     async def board_cmd(self, event: AstrMessageEvent):
         '''榜单 [装等] [详情] [刷新]（刷新需管理员）'''
         if not self.wowboard_allowed(event):
@@ -1365,11 +1400,12 @@ class WowPlugin(Star):
             url = await self._render("board.html", {
                 "rows": display, "mode": mode, "detail": detail, "hidden": hidden or None,
             })
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"榜单获取失败：{e}")
 
     @filter.regex(T_WEEKLY)
+    @filter_output
     async def weekly_cmd(self, event: AstrMessageEvent):
         '''周报：本周进步榜'''
         if not self.wowboard_allowed(event):
@@ -1386,7 +1422,7 @@ class WowPlugin(Star):
             yield event.plain_result("名单为空，请先使用「名单 添加 <群友名> <角色名> <服务器>」添加")
             return
         url = await self._render("weekly.html", {"rows": report})
-        yield event.image_result(url)
+        yield self._image_result(event, url)
 
     def _next_weekly_time(self) -> str:
         """下次周报推送时刻（weekly_report_day 1=周一…7=周日，固定 20:00）。"""
@@ -1404,6 +1440,7 @@ class WowPlugin(Star):
         return t.strftime("%m-%d（周" + "一二三四五六日"[wday - 1] + "）%H:%M")
 
     @filter.regex(T_WEEKLY_PUSH)
+    @filter_output
     async def weekly_push_cmd(self, event: AstrMessageEvent):
         '''周报推送 开/关/状态/测试：本群开启后每周推送本周进步榜（开/关/测试需管理员）'''
         def status(on: bool) -> str:
@@ -1429,12 +1466,13 @@ class WowPlugin(Star):
                 out.append(event.plain_result("名单为空，请先使用「名单 添加 <群友名> <角色名> <服务器>」添加"))
                 return out
             url = await self._render("weekly.html", {"rows": report})
-            out.append(event.image_result(url))
+            out.append(self._image_result(event, url))
         except Exception as e:  # noqa: BLE001
             out.append(event.plain_result(f"周报获取失败：{e}"))
         return out
 
     @filter.regex(T_CHAR_CARD)
+    @filter_output
     async def char_card_cmd(self, event: AstrMessageEvent):
         '''查卡 <群友名或角色名>'''
         if not self.wowboard_allowed(event):
@@ -1451,7 +1489,7 @@ class WowPlugin(Star):
             from wow.data.names import realm_cn
             prof["realm_cn"] = realm_cn(prof.get("realm", prof.get("realm_cn", "")))
             url = await self._render("board_char.html", prof)
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(str(e))
 
@@ -1460,6 +1498,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_NEWS_FORCE)
+    @filter_output
     async def news_force_cmd(self, event: AstrMessageEvent):
         '''魔兽新闻：强制返回最新新闻'''
         if not self._limited("default", self._group_key(event)):
@@ -1469,6 +1508,7 @@ class WowPlugin(Star):
             yield r
 
     @filter.regex(T_NEWS)
+    @filter_output
     async def news_cmd(self, event: AstrMessageEvent):
         '''魔兽新闻改：有更新才返回'''
         if not self._limited("default", self._group_key(event)):
@@ -1478,6 +1518,7 @@ class WowPlugin(Star):
             yield r
 
     @filter.regex(T_NEWS_PUSH)
+    @filter_output
     async def news_push_cmd(self, event: AstrMessageEvent):
         '''魔兽新闻推送 开/关/状态/测试：本群开启后每 5 分钟检查，有更新自动推送卡片图+链接（开/关/测试需管理员）'''
         async for r in self._push_toggle_cmd(
@@ -1493,6 +1534,7 @@ class WowPlugin(Star):
             yield r
 
     @filter.regex(T_NEWS_STATUS)
+    @filter_output
     async def news_status_cmd(self, event: AstrMessageEvent):
         '''魔兽新闻状态：本群推送开关'''
         if not self._group_id(event):
@@ -1526,6 +1568,8 @@ class WowPlugin(Star):
                 f"**描述**: {news.get('description', '')}\n"
                 f"**地址**: {link}"
             )
+            if self._output_blocked(text, strip_markdown(text)):
+                return results
             results.append(self._md(event, text))
             # 优先 Playwright 截真实网页（原版样式）；组件未就绪/失败时回退卡片
             shot = None
@@ -1541,10 +1585,10 @@ class WowPlugin(Star):
                 except Exception as e:  # noqa: BLE001
                     logger.warning("网页截图失败，改用新闻卡片: %s", e)
             if shot:
-                results.append(event.image_result(shot))
+                results.append(self._image_result(event, shot))
             else:
                 url = await self._render("news.html", {"news": news})
-                results.append(event.image_result(url))
+                results.append(self._image_result(event, url))
         except Exception as e:  # noqa: BLE001
             logger.warning("新闻获取失败: %s", e)
             if force:
@@ -1556,6 +1600,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_GACHA)
+    @filter_output
     async def gacha_cmd(self, event: AstrMessageEvent):
         '''开箱 [数量]：随机抽装备'''
         if not self._limited("light", self._group_key(event)):
@@ -1573,9 +1618,10 @@ class WowPlugin(Star):
         url = await self._render("gacha.html", {
             "nick": nick, "rows": result["rows"], "total": result["total"],
         })
-        yield event.image_result(url)
+        yield self._image_result(event, url)
 
     @filter.regex(T_GACHA_RANK)
+    @filter_output
     async def gacha_rank_cmd(self, event: AstrMessageEvent):
         '''红手榜 [数量]：本群红手积分排行'''
         if not self._limited("light", self._group_key(event)):
@@ -1592,13 +1638,14 @@ class WowPlugin(Star):
             yield event.plain_result("本群还没有人开过箱，快试试「开箱」吧")
             return
         url = await self._render("gacha_rank.html", {"rows": rows})
-        yield event.image_result(url)
+        yield self._image_result(event, url)
 
     # ------------------------------------------------------------------
     # 语录（wowquote）
     # ------------------------------------------------------------------
 
     @filter.regex(T_QUOTE)
+    @filter_output
     async def quote_cmd(self, event: AstrMessageEvent):
         '''BOSS语录 [BOSS名]：随机一条魔兽台词'''
         if not self._limited("light", self._group_key(event)):
@@ -1606,13 +1653,14 @@ class WowPlugin(Star):
             return
         q = misc_svc.quote_card(self._cap(T_QUOTE, event))
         url = await self._render("quote.html", {"q": q})
-        yield event.image_result(url)
+        yield self._image_result(event, url)
 
     # ------------------------------------------------------------------
     # 重置提醒（wowreset）
     # ------------------------------------------------------------------
 
     @filter.regex(T_RESET)
+    @filter_output
     async def reset_cmd(self, event: AstrMessageEvent):
         '''重置：查询重置倒计时与本周词缀'''
         if not self._limited("default", self._group_key(event)):
@@ -1624,6 +1672,7 @@ class WowPlugin(Star):
             yield event.plain_result(f"查询失败：{e}")
 
     @filter.regex(T_RESET_REMIND)
+    @filter_output
     async def reset_remind_cmd(self, event: AstrMessageEvent):
         '''重置提醒 开/关/状态/测试（开/关/测试需管理员）'''
         def status(on: bool) -> str:
@@ -1647,6 +1696,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_DELVER)
+    @filter_output
     async def delver_cmd(self, event: AstrMessageEvent):
         '''地下堡饰品：当日可获取饰品'''
         if not self._limited("light", self._group_key(event)):
@@ -1659,12 +1709,14 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_EVENT)
+    @filter_output
     async def event_cmd(self, event: AstrMessageEvent):
         '''事件：当前版本事件'''
         async for r in self._event_card(event, 1):
             yield r
 
     @filter.regex(T_EVENT_ARG)
+    @filter_output
     async def event_arg_cmd(self, event: AstrMessageEvent):
         '''事件 <版本>：指定版本事件'''
         key = self._cap(T_EVENT_ARG, event)
@@ -1676,6 +1728,7 @@ class WowPlugin(Star):
             yield r
 
     @filter.regex(T_EVENT_SUFFIX)
+    @filter_output
     async def event_suffix_cmd(self, event: AstrMessageEvent):
         '''X事件：地心之战事件 / 巨龙时代事件 ...'''
         key = self._cap(T_EVENT_SUFFIX, event)
@@ -1697,11 +1750,13 @@ class WowPlugin(Star):
             yield event.plain_result(f"获取失败：{e}")
 
     @filter.regex(T_BADGE)
+    @filter_output
     async def badge_cmd(self, event: AstrMessageEvent):
         '''徽章：还没开发'''
         yield event.plain_result("还没开发")
 
     @filter.regex(T_MPLUS_RATE)
+    @filter_output
     async def mplus_rate_cmd(self, event: AstrMessageEvent):
         '''大米成功率 [层数]：当前周限时率（出图，默认 10 层）'''
         if not self._limited("heavy", self._group_key(event)):
@@ -1718,11 +1773,12 @@ class WowPlugin(Star):
             url = await self._render("mplus_rate.html", {
                 "period": current_period(), "level": level, "rows": rows,
             })
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"加载失败啦，极大概率是网络访问问题（{e}）")
 
     @filter.regex(T_MPLUS_RANK)
+    @filter_output
     async def mplus_rank_cmd(self, event: AstrMessageEvent):
         '''大米排行榜：当前赛季 输出/防御/治疗 三段排行（出图）'''
         if not self._limited("heavy", self._group_key(event)):
@@ -1744,7 +1800,7 @@ class WowPlugin(Star):
             url = await self._render(
                 "mplus_rank.html", {"title": "大秘境专精排行榜", "groups": groups}
             )
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             yield event.plain_result(f"加载失败啦，极大概率是网络访问问题（{e}）")
 
@@ -1753,6 +1809,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_EAT)
+    @filter_output
     async def eat_cmd(self, event: AstrMessageEvent):
         '''吃什么：按时段推荐'''
         if not self._limited("light", self._group_key(event)):
@@ -1761,6 +1818,7 @@ class WowPlugin(Star):
         yield event.plain_result(misc_svc.what_to_eat())
 
     @filter.regex(T_TALENT)
+    @filter_output
     async def talent_cmd(self, event: AstrMessageEvent):
         '''X天赋：火法天赋 / 鸟德天赋 / DK天赋 ...'''
         key = self._cap(T_TALENT, event)
@@ -1776,6 +1834,7 @@ class WowPlugin(Star):
             yield event.plain_result(f"天赋获取失败：{e}")
 
     @filter.regex(T_TALENT_PREFIX)
+    @filter_output
     async def talent_prefix_cmd(self, event: AstrMessageEvent):
         '''天赋X：天赋火法 / 天赋 DK ...（与 X天赋 等价的兼容写法）'''
         key = self._cap(T_TALENT_PREFIX, event)
@@ -1791,6 +1850,7 @@ class WowPlugin(Star):
             yield event.plain_result(f"天赋获取失败：{e}")
 
     @filter.regex(T_PRICE)
+    @filter_output
     async def price_cmd(self, event: AstrMessageEvent):
         '''物价 物品1、物品2：查询拍卖行价格（本地导出的 Auctionator 数据）'''
         if not self._limited("light", self._group_key(event)):
@@ -1807,6 +1867,7 @@ class WowPlugin(Star):
             yield event.plain_result(f"物价查询失败：{e}")
 
     @filter.regex(T_FORTUNE)
+    @filter_output
     async def fortune_cmd(self, event: AstrMessageEvent):
         '''低保：每日低保运势'''
         if not self._limited("light", self._group_key(event)):
@@ -1815,6 +1876,7 @@ class WowPlugin(Star):
         yield event.plain_result(misc_svc.daily_fortune(str(event.get_sender_id())))
 
     @filter.regex(T_PUNISH)
+    @filter_output
     async def punish_cmd(self, event: AstrMessageEvent):
         '''处罚 <角色名> [服务器]：查询处罚名单 xlsx'''
         if not self._limited("light", self._group_key(event)):
@@ -1850,6 +1912,7 @@ class WowPlugin(Star):
         yield self._md(event, punish_svc.format_hits(name, realm, hits))
 
     @filter.regex(T_PUNISH_SYNC)
+    @filter_output
     async def punish_sync_cmd(self, event: AstrMessageEvent):
         '''处罚名单更新 [强制]：扫官网处罚公告收录新名单；带「强制」则忽略记录全量重抓（管理员）'''
         if not event.is_admin():
@@ -1879,6 +1942,7 @@ class WowPlugin(Star):
         yield self._md(event, punishfeed_svc.report_text(done))
 
     @filter.regex(T_PUNISH_NOTIFY)
+    @filter_output
     async def punish_notify_cmd(self, event: AstrMessageEvent):
         '''处罚通报推送 开/关/状态/测试：本群开启后收录到新处罚名单自动通报（开/关/测试需管理员）'''
         def status(on: bool) -> str:
@@ -1913,6 +1977,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_PET)
+    @filter_output
     async def pet_cmd(self, event: AstrMessageEvent):
         '''宠物：国服宠物对战世界任务（今天 + 明天，欧服数据源）'''
         if not self._limited("default", self._group_key(event)):
@@ -1924,6 +1989,7 @@ class WowPlugin(Star):
             yield event.plain_result(f"查询失败：{e}")
 
     @filter.regex(T_PET_PUSH)
+    @filter_output
     async def pet_push_cmd(self, event: AstrMessageEvent):
         '''宠物推送 开/关/状态/测试：12:00 起每 5 分钟轮询欧服切批，拿到明日批次即推（有重量级野兽加预警；开/关/测试需管理员）'''
         def status(on: bool) -> str:
@@ -1954,6 +2020,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.regex(T_FESTIVAL)
+    @filter_output
     async def festival_cmd(self, event: AstrMessageEvent):
         '''节日 [名字]：无参=当前节日活动；带名字=该节日的上次/下次时间段'''
         if not self._limited("default", self._group_key(event)):
@@ -1969,6 +2036,7 @@ class WowPlugin(Star):
             yield event.plain_result(f"查询失败：{e}")
 
     @filter.regex(T_FESTIVAL_PUSH)
+    @filter_output
     async def festival_push_cmd(self, event: AstrMessageEvent):
         '''节日推送 开/关/状态/测试：本群开启后每天定时播报当前节日活动（开/关/测试需管理员）'''
         def status(on: bool) -> str:
@@ -1996,6 +2064,7 @@ class WowPlugin(Star):
     # ------------------------------------------------------------------
 
     @filter.event_message_type(filter.EventMessageType.ALL)
+    @filter_output
     async def on_nga_link(self, event: AstrMessageEvent):
         '''嗅探 NGA 帖子链接并生成卡片（无需指令前缀，裸链接/句中链接均可触发）'''
         m = getattr(nga_svc, "match_link", None)
@@ -2021,8 +2090,10 @@ class WowPlugin(Star):
                 "forum": topic["forum"], "title": topic["title"], "replies": topic["replies"],
                 "posts": topic["posts"],
             })
+            if not url or self._output_blocked(prefix + header, strip_markdown(prefix + header)):
+                return
             yield self._md(event, prefix + header)
-            yield event.image_result(url)
+            yield self._image_result(event, url)
         except Exception as e:  # noqa: BLE001
             logger.warning("NGA 解析失败: %s", e)
             yield event.plain_result(f"{prefix}ERROR: {e}")
@@ -2174,6 +2245,12 @@ class WowPlugin(Star):
                     logger.warning("新闻检查失败 %s: %s", umo, e)
             if not targets or news_item is None:
                 return
+            _url = news_item.get("url", "")
+            _link = f"[{_url}]({_url})" if _url else "暂无"
+            text = f"**最新魔兽新闻**\n**标题**: {news_item['title']}\n**地址**: {_link}"
+            # 去重状态已由 get_news 更新；命中时连截图一起跳过，不反复尝试。
+            if self._output_blocked(text, strip_markdown(text), news_item.get("description", "")):
+                return
             shot = None
             card_url = None
             if news_item.get("url"):
@@ -2191,9 +2268,6 @@ class WowPlugin(Star):
                     card_url = await self._render("news.html", {"news": news_item})
             else:
                 card_url = await self._render("news.html", {"news": news_item})
-            _url = news_item.get("url", "")
-            _link = f"[{_url}]({_url})" if _url else "暂无"
-            text = f"**最新魔兽新闻**\n**标题**: {news_item['title']}\n**地址**: {_link}"
             for umo in targets:
                 try:
                     if shot:
